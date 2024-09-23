@@ -1,0 +1,45 @@
+# Genesys AudioHook Websocket Server
+
+The websocket server is written in Python using the Quart framework for asynchronous processing. It is designed to integrate with [Genesys AudioHook protocol](https://developer.genesys.cloud/devapps/audiohook) for real-time transcription and summarization. This server is designed to be deployed on Azure as a container.
+
+## Prerequisites
+
+- Python 3.12
+- [uv](https://docs.astral.sh/uv/getting-started/installation/)
+
+Easiest is to leverage the included DevContainer configuration to get started. This will install all the necessary dependencies and tools to get started.
+
+## Installation
+
+```bash
+uv sync
+```
+
+
+## Development
+
+You can start the development server via the command below. The server will start on port 5001 and listen for incoming websocket connections.
+
+```bash
+uv run app.py
+```
+
+During development, you can leverage the [Genesys AudioHook Sample Service](https://github.com/purecloudlabs/audiohook-reference-implementation/tree/main/client) to test the server. This client implements the Genesys AudioHook protocol and will send event and audio data to the chosen websocket server. The client can communicate with websockets over a secure connection (wss) or an insecure connection (ws). Run the command below to start the client.
+
+```bash
+npm start --uri ws://host.docker.internal:5001/ws --api-key your_api_key --client-secret your_secret --wavfile your_audio.wav
+```
+
+## Production
+
+In production, it is recommended to use a production-grade web server like Gunicorn /w Uvicorn workers to serve the application. This will allow for better performance and scalability. You can leverage the included Dockerfile or leverage the command below to start the server.
+
+```
+gunicorn app:app
+```
+
+## TODO
+- Add support for Azure Blob Storage for saving audio files
+- Add extensive logging frameworks
+- Make stateless
+- Add retry handling and reconnect on disconnect

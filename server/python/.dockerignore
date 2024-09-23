@@ -1,0 +1,7 @@
+.env
+.venv
+.ruff_cache
+.pre-commit-config.yaml
+.env.sample
+README.md
+__pycache__

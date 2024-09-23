@@ -1,0 +1,20 @@
+[project]
+name = "genesys-audiohook-websocket-server"
+version = "0.1.0"
+description = "A reference implementation of a WebSocket server on Azure, designed to integrate with [Genesys AudioHook protocol](https://developer.genesys.cloud/devapps/audiohook) for real-time transcription and summarization."
+readme = "README.md"
+requires-python = ">=3.12"
+dependencies = [
+    "azure-cognitiveservices-speech>=1.40.0",
+    "gunicorn>=23.0.0",
+    "numpy>=2.1.1",
+    "python-dotenv>=1.0.1",
+    "quart>=0.19.6",
+    "uvicorn>=0.30.6",
+]
+
+[tool.uv]
+dev-dependencies = [
+    "pre-commit>=3.8.0",
+    "ruff>=0.6.7",
+]
