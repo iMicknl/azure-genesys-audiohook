@@ -4,12 +4,11 @@ import json
 import logging
 import os
 
-from .audio import save_to_wav, ulaw2linear
+from .audio import save_to_wav
 from .enums import (
     CloseReason,
     DisconnectReason,
     ClientMessageType,
-    MediaFormat,
     ServerMessageType,
 )
 from .models import ClientSession, HealthCheckResponse
@@ -257,13 +256,15 @@ class WebsocketServer:
         session_id = message["id"]
 
         if parameters["reason"] == CloseReason.END:
-            # Save the audio data to a WAV file
             media = self.clients[session_id].media
             timestamp = int(datetime.now().timestamp())
             filename = f"{session_id}_{timestamp}.wav"
+
+            # Save the audio bytes to a WAV file
             save_to_wav(
-                filename,
-                self.clients[session_id].audio_buffer,
+                filename=filename,
+                format=media["format"],
+                audio_data=self.clients[session_id].audio_buffer,
                 channels=len(media["channels"]),
                 sample_width=2,
                 frame_rate=media["rate"],
@@ -301,12 +302,6 @@ class WebsocketServer:
         # Initialize or append to the audio buffer for the session
         if self.clients[session_id].audio_buffer is None:
             self.clients[session_id].audio_buffer = bytearray()
-
-        # Save audio data to a buffer, so it can be stored as a recording
-        # Convert the linear PCM data to bytes
-        if media["format"] == MediaFormat.PCMU:
-            linear_pcm = ulaw2linear(data)
-            linear_pcm_bytes = linear_pcm.tobytes()
-            self.clients[session_id].audio_buffer.extend(linear_pcm_bytes)
+        self.clients[session_id].audio_buffer.extend(data)
 
         # TODO implement real-time Speech to Text processing logic
