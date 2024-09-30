@@ -259,10 +259,6 @@ class WebsocketServer:
         if parameters["reason"] == CloseReason.END:
             # Save the audio data to a WAV file
             media = self.clients[session_id].media
-            self.logger.info(
-                f"[{session_id}] Saving {media["type"]}, format {media["format"]}, rate {media["rate"]}, channels {len(media["channels"])}"
-            )
-
             timestamp = int(datetime.now().timestamp())
             filename = f"{session_id}_{timestamp}.wav"
             save_to_wav(
@@ -273,7 +269,9 @@ class WebsocketServer:
                 frame_rate=media["rate"],
             )
 
-            self.logger.info(f"[{session_id}] Audio data saved to {filename}")
+            self.logger.info(
+                f"[{session_id}] Audio data saved to {filename} ({media["type"]}, format {media["format"]}, rate {media["rate"]}, channels {len(media["channels"])}"
+            )
 
             await self.send_message(
                 type=ServerMessageType.CLOSED, client_message=message
@@ -299,10 +297,6 @@ class WebsocketServer:
         self.logger.info(
             f"[{session_id}] type {media["type"]}, format {media["format"]}, rate {media["rate"]}, channels {len(media["channels"])}"
         )
-
-        # Calculate the duration of the audio data
-        # audio_duration = (len(data) * 8) / (media["rate"] * len(media["channels"]))
-        # self.logger.info(f"[{session_id}] Audio duration: {audio_duration} seconds")
 
         # Initialize or append to the audio buffer for the session
         if self.clients[session_id].audio_buffer is None:
