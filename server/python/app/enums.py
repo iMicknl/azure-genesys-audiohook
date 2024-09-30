@@ -43,3 +43,9 @@ class DisconnectReason(StrEnum):
     COMPLETED = "completed"
     ERROR = "error"
     UNAUTHORIZED = "unauthorized"
+
+
+@unique
+class MediaFormat(StrEnum):
+    PCMU = "PCMU"
+    L16 = "L16"
