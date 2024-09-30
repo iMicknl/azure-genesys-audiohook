@@ -35,7 +35,7 @@ class ClientSession:
     rtt: list[int] = field(default_factory=list)
     last_rtt: int | None = None
     media: dict | None = None
-    audio_buffer: Any | None = None
+    audio_buffer: bytearray | None = None
 
 
 @dataclass(kw_only=True)

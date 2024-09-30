@@ -5,7 +5,13 @@ import logging
 import os
 
 from .audio import save_to_wav, ulaw2linear
-from .enums import CloseReason, DisconnectReason, ClientMessageType, ServerMessageType
+from .enums import (
+    CloseReason,
+    DisconnectReason,
+    ClientMessageType,
+    MediaFormat,
+    ServerMessageType,
+)
 from .models import ClientSession, HealthCheckResponse
 from datetime import datetime
 
@@ -207,17 +213,35 @@ class WebsocketServer:
         self.clients[session_id].dnis = dnis
         self.clients[session_id].conversation_id = conversation_id
 
+        # Filter available media for channels with length of 2 and containing "internal" and "external" (stereo)
+        stereo_media = [
+            m
+            for m in media
+            if len(m["channels"]) == 2
+            and "internal" in m["channels"]
+            and "external" in m["channels"]
+        ]
+
+        if stereo_media:
+            selected_media = stereo_media[0]
+        else:
+            self.logger.warning(
+                f"[{session_id}] No stereo media found, falling back to first available media format."
+            )
+            selected_media = media[0]
+
+        # Open stream with selected media format
         await self.send_message(
             type=ServerMessageType.OPENED,
             client_message=message,
             parameters={
                 "startPaused": False,
-                "media": [media[0]],
-            },  # TODO for multi stream, do we need to send opened twice or is this a limiation of test client (and how to distinguish both channels?)
+                "media": [selected_media],
+            },
         )
 
-        self.logger.info(f"[{session_id}] Session opened with media: {media[0]}")
-        self.clients[session_id].media = media[0]
+        self.logger.info(f"[{session_id}] Session opened with media: {selected_media}")
+        self.clients[session_id].media = selected_media
 
     async def handle_update_message(self, message: dict):
         """Handle update message"""
@@ -276,15 +300,19 @@ class WebsocketServer:
             f"[{session_id}] type {media["type"]}, format {media["format"]}, rate {media["rate"]}, channels {len(media["channels"])}"
         )
 
-        # Save audio data to a buffer, so it can be stored as a recording
-        # Convert the linear PCM data to bytes
-        linear_pcm = ulaw2linear(data)
-        linear_pcm_bytes = linear_pcm.tobytes()
+        # Calculate the duration of the audio data
+        # audio_duration = (len(data) * 8) / (media["rate"] * len(media["channels"]))
+        # self.logger.info(f"[{session_id}] Audio duration: {audio_duration} seconds")
 
         # Initialize or append to the audio buffer for the session
         if self.clients[session_id].audio_buffer is None:
             self.clients[session_id].audio_buffer = bytearray()
 
-        self.clients[session_id].audio_buffer.extend(linear_pcm_bytes)
+        # Save audio data to a buffer, so it can be stored as a recording
+        # Convert the linear PCM data to bytes
+        if media["format"] == MediaFormat.PCMU:
+            linear_pcm = ulaw2linear(data)
+            linear_pcm_bytes = linear_pcm.tobytes()
+            self.clients[session_id].audio_buffer.extend(linear_pcm_bytes)
 
         # TODO implement real-time Speech to Text processing logic
