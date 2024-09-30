@@ -95,7 +95,8 @@ class WebsocketServer:
                 await self.handle_bytes(data, session_id)
             else:
                 self.logger.debug(
-                    f"[{session_id}] Received unknown data type: {type(data)}: {data}"
+                    f"[{session_id}] Received unknown data type: {type(data)}: {
+                        data}"
                 )
 
     async def disconnect(self, reason: DisconnectReason, message: str, code: int):
@@ -140,7 +141,8 @@ class WebsocketServer:
         if message["seq"] != self.clients[session_id].client_seq + 1:
             self.disconnect(
                 reason=DisconnectReason.ERROR,
-                message=f"Sequence number mismatch: received {message['seq']}, expected {self.clients[session_id].client_seq + 1}",
+                message=f"Sequence number mismatch: received {
+                    message['seq']}, expected {self.clients[session_id].client_seq + 1}",
                 code=3000,
             )
 
@@ -158,7 +160,8 @@ class WebsocketServer:
                 await self.handle_close_message(message)
             case _:
                 self.logger.info(
-                    f"[{session_id}] Unknown message type: {message['type']} : {message}"
+                    f"[{session_id}] Unknown message type: {
+                        message['type']} : {message}"
                 )
 
     async def handle_ping_message(self, message: dict):
@@ -197,12 +200,11 @@ class WebsocketServer:
         media = parameters["media"]
         position = message["position"]
 
+        # Handle connection probe
+        # See https://developer.genesys.cloud/devapps/audiohook/patterns-and-practices#connection-probe
         if conversation_id == "00000000-0000-0000-0000-000000000000":
-            # TODO implement connection probe handling
-            # See https://developer.genesys.cloud/devapps/audiohook/patterns-and-practices#connection-probe
-            self.logger.info(
-                f"[{session_id}] Connection probe. Conversation should not be logged and transcribed."
-            )
+            self.handle_connection_probe(message)
+            return
 
         self.logger.info(
             f"[{session_id}] Session opened with conversation ID: {conversation_id}, ANI Name: {ani_name}, DNIS: {dnis}, Position: {position}"
@@ -265,7 +267,8 @@ class WebsocketServer:
             )
 
             self.logger.info(
-                f"[{session_id}] Audio data saved to {filename} ({media["type"]}, format {media["format"]}, rate {media["rate"]}, channels {len(media["channels"])}"
+                f"[{session_id}] Audio data saved to {filename} ({media["type"]}, format {
+                    media["format"]}, rate {media["rate"]}, channels {len(media["channels"])}"
             )
 
             await self.send_message(
@@ -275,6 +278,35 @@ class WebsocketServer:
 
             # TODO store session history in database, before removing
             del self.clients[session_id]
+
+    async def handle_connection_probe(self, message: dict):
+        """
+        Handle connection probe
+
+        To verify configuration settings before they are committed in the administration interface, the Genesys Cloud client attempts to establish a WebSocket connection to the configured URI followed by a synthetic AudioHook session.
+        This connection probe and synthetic session helps flagging integration configuration issues and verify minimal server compliance without needing manual test calls.
+        """
+        session_id = message["id"]
+        self.logger.info(
+            f"[{session_id}] Connection probe. Conversation should not be logged and transcribed."
+        )
+
+        await self.send_message(
+            type=ServerMessageType.OPENED,
+            client_message=message,
+            parameters={
+                "startPaused": False,
+                "media": [],
+            },
+        )
+
+        await self.send_message(
+            type=ClientMessageType.CLOSE,
+            client_message=message,
+            parameters={
+                "reason": CloseReason.END,
+            },
+        )
 
     async def handle_bytes(self, data: bytes, session_id: str):
         """
@@ -290,7 +322,8 @@ class WebsocketServer:
 
         media = self.clients[session_id].media
         self.logger.info(
-            f"[{session_id}] type {media["type"]}, format {media["format"]}, rate {media["rate"]}, channels {len(media["channels"])}"
+            f"[{session_id}] type {media["type"]}, format {media["format"]}, rate {
+                media["rate"]}, channels {len(media["channels"])}"
         )
 
         # Initialize or append to the audio buffer for the session
