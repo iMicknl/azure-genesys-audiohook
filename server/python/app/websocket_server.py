@@ -195,6 +195,7 @@ class WebsocketServer:
         dnis = parameters["participant"]["dnis"]
         session_id = message["id"]
         media = parameters["media"]
+        position = message["position"]
 
         if conversation_id == "00000000-0000-0000-0000-000000000000":
             # TODO implement connection probe handling
@@ -204,7 +205,7 @@ class WebsocketServer:
             )
 
         self.logger.info(
-            f"[{session_id}] Session opened with conversation ID: {conversation_id}, ANI Name: {ani_name}, DNIS: {dnis}"
+            f"[{session_id}] Session opened with conversation ID: {conversation_id}, ANI Name: {ani_name}, DNIS: {dnis}, Position: {position}"
         )
         self.logger.info(f"[{session_id}] Available media: {media}")
 
@@ -277,7 +278,7 @@ class WebsocketServer:
 
     async def handle_bytes(self, data: bytes, session_id: str):
         """
-        Handles audio stream in u-Law ("PCMU") and converts it to WAV format
+        Handles audio stream in u-Law ("PCMU")
 
         The audio in the frames for PCMU are headerless and the samples of two-channel streams are interleaved. For example, a 100ms audio frame in the format negotiated in the above example (PCMU, two channels, 8000Hz sample rate) would comprise 1600 bytes and have the following layout:
         The number of samples per frame is variable and is up to the client. There is a tradeoff between higher latency (larger frames) and higher overhead (smaller frames). The client will guarantee that frames only contain whole samples for all channels (i.e. the bytes of individual samples will not be split across frames). The server must not make any assumptions about audio frame sizes and maintain a timeline of the audio stream by counting the samples.
