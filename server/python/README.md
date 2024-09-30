@@ -11,10 +11,11 @@ Easiest is to leverage the included DevContainer configuration to get started. T
 
 ## Installation
 
+You can install the dependencies via the command below using uv.
+
 ```bash
 uv sync
 ```
-
 
 ## Development
 
@@ -28,6 +29,14 @@ During development, you can leverage the [Genesys AudioHook Sample Service](http
 
 ```bash
 npm start --uri ws://host.docker.internal:5001/ws --api-key your_api_key --client-secret your_secret --wavfile your_audio.wav
+```
+
+### Tests
+
+You can run the tests via the command below. The tests are written using the Pytest framework.
+
+```bash
+uv run pytest tests
 ```
 
 ## Production
