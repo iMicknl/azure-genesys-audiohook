@@ -16,6 +16,10 @@ dependencies = [
 [tool.uv]
 dev-dependencies = [
     "pre-commit>=3.8.0",
+    "pytest-asyncio>=0.24.0",
     "pytest>=8.3.3",
     "ruff>=0.6.7",
 ]
+
+[tool.pytest.ini_options]
+asyncio_default_fixture_loop_scope = "function"
