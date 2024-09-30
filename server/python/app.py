@@ -3,6 +3,7 @@ from quart import Quart, websocket
 import json
 import logging
 import os
+import azure.cognitiveservices.speech as speechsdk
 
 from enums import CloseReason, DisconnectReason, ClientMessageType, ServerMessageType
 from models import ClientSession, HealthCheckResponse
@@ -31,7 +32,7 @@ class WebsocketServer:
 
     async def health_check(self):
         """Health check endpoint"""
-        # TODO this approach won't work with multiple workers (each worker will have its own memory storage)
+        # TODO this approach won"t work with multiple workers (each worker will have its own memory storage)
         return dataclasses.asdict(
             HealthCheckResponse(
                 status="online",
@@ -91,7 +92,8 @@ class WebsocketServer:
                 await self.handle_bytes(data, session_id)
             else:
                 self.logger.debug(
-                    f"[{session_id}] Received unknown data type: {type(data)}: {data}"
+                    f"[{session_id}] Received unknown data type: {type(data)}: {
+                        data}"
                 )
 
     async def disconnect(self, reason: DisconnectReason, message: str, code: int):
@@ -136,7 +138,8 @@ class WebsocketServer:
         if message["seq"] != self.clients[session_id].client_seq + 1:
             self.disconnect(
                 reason=DisconnectReason.ERROR,
-                message=f"Sequence number mismatch: received {message['seq']}, expected {self.clients[session_id].client_seq + 1}",
+                message=f"Sequence number mismatch: received {
+                    message["seq"]}, expected {self.clients[session_id].client_seq + 1}",
                 code=3000,
             )
 
@@ -154,7 +157,8 @@ class WebsocketServer:
                 await self.handle_close_message(message)
             case _:
                 self.logger.info(
-                    f"[{session_id}] Unknown message type: {message['type']} : {message}"
+                    f"[{session_id}] Unknown message type: {
+                        message["type"]} : {message}"
                 )
 
     async def handle_ping_message(self, message: dict):
@@ -169,7 +173,7 @@ class WebsocketServer:
 
         if parameters.get("rtt"):
             self.logger.info(
-                f"[{session_id}] Received ping with RTT: {parameters['rtt']}"
+                f"[{session_id}] Received ping with RTT: {parameters["rtt"]}"
             )
             self.clients[session_id].rtt.append(parameters["rtt"])
             self.clients[session_id].last_rtt = parameters["rtt"]
@@ -200,7 +204,8 @@ class WebsocketServer:
             )
 
         self.logger.info(
-            f"[{session_id}] Session opened with conversation ID: {conversation_id}, ANI Name: {ani_name}, DNIS: {dnis}"
+            f"[{session_id}] Session opened with conversation ID: {
+                conversation_id}, ANI Name: {ani_name}, DNIS: {dnis}"
         )
         self.logger.info(f"[{session_id}] Available media: {media}")
 
@@ -214,7 +219,8 @@ class WebsocketServer:
             parameters={
                 "startPaused": False,
                 "media": [media[0]],
-            },  # TODO for multi stream, do we need to send opened twice or is this a limiation of test client (and how to distinguish both channels?)
+                # TODO for multi stream, do we need to send opened twice or is this a limiation of test client (and how to distinguish both channels?)
+            },
         )
 
         self.logger.info(f"[{session_id}] Session opened with media: {media[0]}")
@@ -248,7 +254,7 @@ class WebsocketServer:
 
         The audio in the frames for PCMU are headerless and the samples of two-channel streams are interleaved. For example, a 100ms audio frame in the format negotiated in the above example (PCMU, two channels, 8000Hz sample rate) would comprise 1600 bytes and have the following layout:
         The number of samples per frame is variable and is up to the client. There is a tradeoff between higher latency (larger frames) and higher overhead (smaller frames). The client will guarantee that frames only contain whole samples for all channels (i.e. the bytes of individual samples will not be split across frames). The server must not make any assumptions about audio frame sizes and maintain a timeline of the audio stream by counting the samples.
-        The position property in the message header represents the current position in the audio stream from the client's perspective when it sent the message. It is reported as time represented as ISO8601 Duration to avoid sample-rate dependence. It is computed as:
+        The position property in the message header represents the current position in the audio stream from the client"s perspective when it sent the message. It is reported as time represented as ISO8601 Duration to avoid sample-rate dependence. It is computed as:
 
         position=\frac{samplesProcessed}{sampleRate}
         """
@@ -256,11 +262,46 @@ class WebsocketServer:
 
         media = self.clients[session_id].media
         self.logger.info(
-            f"[{session_id}] type {media['type']}, format {media['format']}, rate {media['rate']}"
+            f"[{session_id}] type {media["type"]}, format {media["format"]}, rate {
+                media["rate"]}, channels {len(media["channels"])}"
         )
 
         # TODO implement audio storage (save fragments to WAV file)
+
         # TODO implement Speech to Text processing logic
+        speech_config = speechsdk.SpeechConfig(
+            subscription=os.getenv("AZURE_SPEECH_KEY"),
+            region=os.getenv("AZURE_SPEECH_REGION"),
+        )
+        encoded_format = speechsdk.audio.AudioStreamFormat(
+            samples_per_second=media["rate"],
+            bits_per_sample=16,
+            # compressed_stream_format=speechsdk.AudioStreamContainerFormat.ANY,
+            channels=len(media["channels"]),
+            wave_stream_format=speechsdk.AudioStreamWaveFormat.PCM,
+        )
+        audio_stream = speechsdk.audio.PushAudioInputStream(
+            stream_format=encoded_format
+        )
+
+        audio_stream.write(data)
+        audio_stream.close()
+
+        audio_config = speechsdk.audio.AudioConfig(stream=audio_stream)
+        auto_detect_source_language_config = (
+            speechsdk.languageconfig.AutoDetectSourceLanguageConfig(
+                languages=["en-US", "fr-FR", "es-ES"]
+            )
+        )
+
+        speech_recognizer = speechsdk.SpeechRecognizer(
+            speech_config=speech_config,
+            auto_detect_source_language_config=auto_detect_source_language_config,
+            audio_config=audio_config,
+        )
+
+        result = speech_recognizer.recognize_once_async().get()
+        self.logger.debug(result)
 
 
 # Run development server when running this script directly.
