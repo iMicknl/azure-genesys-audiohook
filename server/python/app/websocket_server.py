@@ -4,11 +4,8 @@ import json
 import logging
 import os
 
-from enums import CloseReason, DisconnectReason, ClientMessageType, ServerMessageType
-from models import ClientSession, HealthCheckResponse
-from dotenv import load_dotenv, find_dotenv
-
-load_dotenv(find_dotenv())
+from .enums import CloseReason, DisconnectReason, ClientMessageType, ServerMessageType
+from .models import ClientSession, HealthCheckResponse
 
 
 class WebsocketServer:
@@ -261,19 +258,3 @@ class WebsocketServer:
 
         # TODO implement audio storage (save fragments to WAV file)
         # TODO implement Speech to Text processing logic
-
-
-# Run development server when running this script directly.
-# For production it is recommended that Quart will be run using Hypercorn or an alternative ASGI server.
-if __name__ == "__main__":
-    server = WebsocketServer()
-    server.app.run()
-else:
-    server = WebsocketServer()
-    app = server.app
-
-# Set logging level based on environment variables
-if os.getenv("RUNNING_IN_PRODUCTION") and os.getenv("DEBUG_MODE") != "true":
-    logging.basicConfig(level=logging.WARNING)
-else:
-    logging.basicConfig(level=logging.INFO)

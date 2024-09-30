@@ -18,4 +18,4 @@ RUN uv sync --frozen --no-dev --no-install-project
 EXPOSE 8000
 
 # Command to run the Quart app with gunicorn (/w uvicorn workers)
-CMD ["uv", "run", "gunicorn", "-b", "0.0.0.0:8000", "app:app"]
+CMD ["uv", "run", "gunicorn", "-b", "0.0.0.0:8000", "server:app"]
