@@ -2,6 +2,9 @@
 
 The websocket server is written in Python using the Quart framework for asynchronous processing. It is designed to integrate with [Genesys AudioHook protocol](https://developer.genesys.cloud/devapps/audiohook) for real-time transcription and summarization. This server is designed to be deployed on Azure as a container.
 
+> [!NOTE]
+> This application is an example implementation and is not intended for production use. It is provided as-is and is not supported.
+
 ## Prerequisites
 
 - Python 3.12
