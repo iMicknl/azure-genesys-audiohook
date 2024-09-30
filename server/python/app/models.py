@@ -36,7 +36,6 @@ class ClientSession:
     last_rtt: int | None = None
     media: dict | None = None
     audio_buffer: bytearray | None = None
-    duration: float = 0
 
 
 @dataclass(kw_only=True)
