@@ -4,8 +4,10 @@ import json
 import logging
 import os
 
+from .audio import save_to_wav, ulaw2linear
 from .enums import CloseReason, DisconnectReason, ClientMessageType, ServerMessageType
 from .models import ClientSession, HealthCheckResponse
+from datetime import datetime
 
 
 class WebsocketServer:
@@ -231,6 +233,24 @@ class WebsocketServer:
         session_id = message["id"]
 
         if parameters["reason"] == CloseReason.END:
+            # Save the audio data to a WAV file
+            media = self.clients[session_id].media
+            self.logger.info(
+                f"[{session_id}] Saving {media["type"]}, format {media["format"]}, rate {media["rate"]}, channels {len(media["channels"])}"
+            )
+
+            timestamp = int(datetime.now().timestamp())
+            filename = f"{session_id}_{timestamp}.wav"
+            save_to_wav(
+                filename,
+                self.clients[session_id].audio_buffer,
+                channels=len(media["channels"]),
+                sample_width=2,
+                frame_rate=media["rate"],
+            )
+
+            self.logger.info(f"[{session_id}] Audio data saved to {filename}")
+
             await self.send_message(
                 type=ServerMessageType.CLOSED, client_message=message
             )
@@ -253,8 +273,18 @@ class WebsocketServer:
 
         media = self.clients[session_id].media
         self.logger.info(
-            f"[{session_id}] type {media['type']}, format {media['format']}, rate {media['rate']}"
+            f"[{session_id}] type {media["type"]}, format {media["format"]}, rate {media["rate"]}, channels {len(media["channels"])}"
         )
 
-        # TODO implement audio storage (save fragments to WAV file)
-        # TODO implement Speech to Text processing logic
+        # Save audio data to a buffer, so it can be stored as a recording
+        # Convert the linear PCM data to bytes
+        linear_pcm = ulaw2linear(data)
+        linear_pcm_bytes = linear_pcm.tobytes()
+
+        # Initialize or append to the audio buffer for the session
+        if self.clients[session_id].audio_buffer is None:
+            self.clients[session_id].audio_buffer = bytearray()
+
+        self.clients[session_id].audio_buffer.extend(linear_pcm_bytes)
+
+        # TODO implement real-time Speech to Text processing logic
