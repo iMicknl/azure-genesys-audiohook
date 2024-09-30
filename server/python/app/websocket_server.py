@@ -212,24 +212,17 @@ class WebsocketServer:
         self.clients[session_id].dnis = dnis
         self.clients[session_id].conversation_id = conversation_id
 
-        # Filter available media for channels with length of 2 and containing "internal" and "external" (stereo)
-        stereo_media = [
-            m
-            for m in media
-            if len(m["channels"]) == 2
-            and "internal" in m["channels"]
-            and "external" in m["channels"]
-        ]
+        # Select stereo media if available, otherwise fallback to the first media format
+        selected_media = next(
+            (
+                m
+                for m in media
+                if len(m["channels"]) == 2
+                and {"internal", "external"}.issubset(m["channels"])
+            ),
+            media[0],
+        )
 
-        if stereo_media:
-            selected_media = stereo_media[0]
-        else:
-            self.logger.warning(
-                f"[{session_id}] No stereo media found, falling back to first available media format."
-            )
-            selected_media = media[0]
-
-        # Open stream with selected media format
         await self.send_message(
             type=ServerMessageType.OPENED,
             client_message=message,
