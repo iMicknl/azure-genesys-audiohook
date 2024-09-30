@@ -95,8 +95,7 @@ class WebsocketServer:
                 await self.handle_bytes(data, session_id)
             else:
                 self.logger.debug(
-                    f"[{session_id}] Received unknown data type: {type(data)}: {
-                        data}"
+                    f"[{session_id}] Received unknown data type: {type(data)}: {data}"
                 )
 
     async def disconnect(self, reason: DisconnectReason, message: str, code: int):
@@ -141,8 +140,7 @@ class WebsocketServer:
         if message["seq"] != self.clients[session_id].client_seq + 1:
             self.disconnect(
                 reason=DisconnectReason.ERROR,
-                message=f"Sequence number mismatch: received {
-                    message['seq']}, expected {self.clients[session_id].client_seq + 1}",
+                message=f"Sequence number mismatch: received {message['seq']}, expected {self.clients[session_id].client_seq + 1}",
                 code=3000,
             )
 
@@ -160,8 +158,7 @@ class WebsocketServer:
                 await self.handle_close_message(message)
             case _:
                 self.logger.info(
-                    f"[{session_id}] Unknown message type: {
-                        message['type']} : {message}"
+                    f"[{session_id}] Unknown message type: {message['type']} : {message}"
                 )
 
     async def handle_ping_message(self, message: dict):
@@ -267,8 +264,7 @@ class WebsocketServer:
             )
 
             self.logger.info(
-                f"[{session_id}] Audio data saved to {filename} ({media["type"]}, format {
-                    media["format"]}, rate {media["rate"]}, channels {len(media["channels"])}"
+                f"[{session_id}] Audio data saved to {filename} ({media["type"]}, format {media["format"]}, rate {media["rate"]}, channels {len(media["channels"])}"
             )
 
             await self.send_message(
