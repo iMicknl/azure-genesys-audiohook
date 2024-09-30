@@ -7,7 +7,6 @@ os.environ["WEBSOCKET_SERVER_API_KEY"] = "SGVsbG8sIEkgYW0gdGhlIEFQSSBrZXkh"
 os.environ["WEBSOCKET_SERVER_CLIENT_SECRET"] = (
     "TXlTdXBlclNlY3JldEtleVRlbGxOby0xITJAMyM0JDU="
 )
-os.environ["ACCOUNT_ID"] = "123456789"
 
 
 @pytest.fixture
