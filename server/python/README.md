@@ -38,6 +38,17 @@ In production, it is recommended to use a production-grade web server like Gunic
 gunicorn server:app
 ```
 
+### Deploy to Azure
+
+This repository doesn't provide an infrastructure as code (IaC) solution for deploying the server to Azure. However, you can leverage the Azure CLI to deploy the server to Azure Container Apps. Run the command below to deploy the server to Azure Container Apps.
+
+```bash
+az containerapp up --resource-group your-resource-group \
+--name your-application-name - --location westeurope \
+--ingress external --target-port 8000 --source . \
+--env-vars WEBSOCKET_SERVER_API_KEY="your_api_key" WEBSOCKET_SERVER_CLIENT_SECRET="your_secret=" DEBUG_MODE="true"
+```
+
 ## TODO
 - Add support for Azure Blob Storage for saving audio files
 - Add support for Azure AI Speech / Azure OpenAI Whisper for speech-to-text
