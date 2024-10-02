@@ -1,11 +1,13 @@
 import pytest
 import os
 from app.websocket_server import WebsocketServer
+import wave
+import audioop
 
 
 os.environ["WEBSOCKET_SERVER_API_KEY"] = "SGVsbG8sIEkgYW0gdGhlIEFQSSBrZXkh"
 os.environ["WEBSOCKET_SERVER_CLIENT_SECRET"] = (
-    "TXlTdXBlclNlY3JldEtleVRlbGxOby0xITJAMyM0JDU="
+    "TXlTdXBlclNlY3JldEtleYVRlbGxOby0xITJAMyM0JDU="
 )
 
 
@@ -130,3 +132,84 @@ async def test_ws_valid_connection(app):
         response = await ws.receive_json()
 
         assert response["type"] == "opened"
+
+
+@pytest.mark.asyncio
+async def test_save_audio_to_wav(app):
+    """Test saving and concatenation of audio chunks into a full WAV file"""
+    headers = {
+        "X-Api-Key": os.getenv("WEBSOCKET_SERVER_API_KEY"),
+        "Audiohook-Session-Id": "test_session",
+        "Audiohook-Correlation-Id": "test_correlation",
+        "Signature-Input": "test_signature_input",
+        "Signature": "test_signature",
+    }
+
+    async with app.websocket("/ws", headers=headers) as ws:
+        # Send open message
+        await ws.send_json(
+            {
+                "version": "2",
+                "type": "open",
+                "seq": 1,
+                "serverseq": 0,
+                "id": "test_session",
+                "position": "PT0S",
+                "parameters": {
+                    "organizationId": "d7934305-0972-4844-938e-9060eef73d05",
+                    "conversationId": "090eaa2f-72fa-480a-83e0-8667ff89c0ec",
+                    "participant": {
+                        "id": "883efee8-3d6c-4537-b500-6d7ca4b92fa0",
+                        "ani": "+1-555-555-1234",
+                        "aniName": "John Doe",
+                        "dnis": "+1-800-555-6789",
+                    },
+                    "media": [
+                        {
+                            "type": "audio",
+                            "format": "PCMU",
+                            "channels": ["external", "internal"],
+                            "rate": 8000,
+                        }
+                    ],
+                    "language": "en-US",
+                },
+            }
+        )
+
+        response = await ws.receive_json()
+        assert response["type"] == "opened"
+
+        # Send audio data
+        audio_data = audioop.lin2ulaw(b"\x01\x02\x03\x04" * 400, 2)
+        await ws.send(audio_data)
+
+        # Send close message
+        await ws.send_json(
+            {
+                "version": "2",
+                "type": "close",
+                "seq": 2,
+                "serverseq": 1,
+                "id": "test_session",
+                "position": "PT1S",
+                "parameters": {
+                    "reason": "end",
+                },
+            }
+        )
+
+        response = await ws.receive_json()
+        assert response["type"] == "closed"
+
+        # Verify WAV file
+        output_file = "test_session.wav"
+        assert os.path.exists(output_file)
+
+        with wave.open(output_file, "rb") as wav_file:
+            assert wav_file.getnchannels() == 2
+            assert wav_file.getsampwidth() == 2
+            assert wav_file.getframerate() == 8000
+            assert wav_file.getnframes() > 0
+
+        os.remove(output_file)

@@ -3,6 +3,8 @@ from quart import Quart, websocket
 import json
 import logging
 import os
+import wave
+import audioop
 
 from .enums import CloseReason, DisconnectReason, ClientMessageType, ServerMessageType
 from .models import ClientSession, HealthCheckResponse
@@ -236,6 +238,8 @@ class WebsocketServer:
             )
             await websocket.close(1000)
 
+            await self.save_audio_to_wav(session_id)
+
             # TODO store session history in database, before removing
             del self.clients[session_id]
 
@@ -256,5 +260,26 @@ class WebsocketServer:
             f"[{session_id}] type {media['type']}, format {media['format']}, rate {media['rate']}"
         )
 
-        # TODO implement audio storage (save fragments to WAV file)
-        # TODO implement Speech to Text processing logic
+        if not hasattr(self.clients[session_id], "audio_chunks"):
+            self.clients[session_id].audio_chunks = []
+
+        self.clients[session_id].audio_chunks.append(data)
+
+    async def save_audio_to_wav(self, session_id: str):
+        """Save concatenated audio chunks to a WAV file"""
+        audio_chunks = self.clients[session_id].audio_chunks
+        if not audio_chunks:
+            self.logger.warning(f"[{session_id}] No audio chunks to save.")
+            return
+
+        output_file = f"{session_id}.wav"
+        with wave.open(output_file, "wb") as wav_file:
+            wav_file.setnchannels(2)
+            wav_file.setsampwidth(2)
+            wav_file.setframerate(8000)
+
+            for chunk in audio_chunks:
+                decoded_chunk = audioop.ulaw2lin(chunk, 2)
+                wav_file.writeframes(decoded_chunk)
+
+        self.logger.info(f"[{session_id}] Audio saved to {output_file}")
