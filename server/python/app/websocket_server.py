@@ -35,13 +35,9 @@ class WebsocketServer:
 
     async def health_check(self):
         """Health check endpoint"""
-        # TODO this approach won't work with multiple workers (each worker will have its own memory storage)
+        # TODO this won't show the right amount of connected clients with multiple workers (each worker will have its own memory storage)
         return dataclasses.asdict(
-            HealthCheckResponse(
-                status="online",
-                connected_clients=len(self.clients),
-                sessions=self.clients,
-            )
+            HealthCheckResponse(status="online", connected_clients=len(self.clients))
         )
 
     async def ws(self):
