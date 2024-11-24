@@ -4,8 +4,15 @@ import json
 import logging
 import os
 
-from .enums import CloseReason, DisconnectReason, ClientMessageType, ServerMessageType
+from .audio import save_to_wav
+from .enums import (
+    CloseReason,
+    DisconnectReason,
+    ClientMessageType,
+    ServerMessageType,
+)
 from .models import ClientSession, HealthCheckResponse
+from datetime import datetime
 
 
 class WebsocketServer:
@@ -28,13 +35,9 @@ class WebsocketServer:
 
     async def health_check(self):
         """Health check endpoint"""
-        # TODO this approach won't work with multiple workers (each worker will have its own memory storage)
+        # TODO this won't show the right amount of connected clients with multiple workers (each worker will have its own memory storage)
         return dataclasses.asdict(
-            HealthCheckResponse(
-                status="online",
-                connected_clients=len(self.clients),
-                sessions=self.clients,
-            )
+            HealthCheckResponse(status="online", connected_clients=len(self.clients))
         )
 
     async def ws(self):
@@ -188,16 +191,16 @@ class WebsocketServer:
         dnis = parameters["participant"]["dnis"]
         session_id = message["id"]
         media = parameters["media"]
+        position = message["position"]
 
+        # Handle connection probe
+        # See https://developer.genesys.cloud/devapps/audiohook/patterns-and-practices#connection-probe
         if conversation_id == "00000000-0000-0000-0000-000000000000":
-            # TODO implement connection probe handling
-            # See https://developer.genesys.cloud/devapps/audiohook/patterns-and-practices#connection-probe
-            self.logger.info(
-                f"[{session_id}] Connection probe. Conversation should not be logged and transcribed."
-            )
+            self.handle_connection_probe(message)
+            return
 
         self.logger.info(
-            f"[{session_id}] Session opened with conversation ID: {conversation_id}, ANI Name: {ani_name}, DNIS: {dnis}"
+            f"[{session_id}] Session opened with conversation ID: {conversation_id}, ANI Name: {ani_name}, DNIS: {dnis}, Position: {position}"
         )
         self.logger.info(f"[{session_id}] Available media: {media}")
 
@@ -205,17 +208,28 @@ class WebsocketServer:
         self.clients[session_id].dnis = dnis
         self.clients[session_id].conversation_id = conversation_id
 
+        # Select stereo media if available, otherwise fallback to the first media format
+        selected_media = next(
+            (
+                m
+                for m in media
+                if len(m["channels"]) == 2
+                and {"internal", "external"}.issubset(m["channels"])
+            ),
+            media[0],
+        )
+
         await self.send_message(
             type=ServerMessageType.OPENED,
             client_message=message,
             parameters={
                 "startPaused": False,
-                "media": [media[0]],
-            },  # TODO for multi stream, do we need to send opened twice or is this a limiation of test client (and how to distinguish both channels?)
+                "media": [selected_media],
+            },
         )
 
-        self.logger.info(f"[{session_id}] Session opened with media: {media[0]}")
-        self.clients[session_id].media = media[0]
+        self.logger.info(f"[{session_id}] Session opened with media: {selected_media}")
+        self.clients[session_id].media = selected_media
 
     async def handle_update_message(self, message: dict):
         """Handle update message"""
@@ -231,6 +245,24 @@ class WebsocketServer:
         session_id = message["id"]
 
         if parameters["reason"] == CloseReason.END:
+            media = self.clients[session_id].media
+            timestamp = int(datetime.now().timestamp())
+            filename = f"{session_id}_{timestamp}.wav"
+
+            # Save the audio bytes to a WAV file
+            save_to_wav(
+                filename=filename,
+                format=media["format"],
+                audio_data=self.clients[session_id].audio_buffer,
+                channels=len(media["channels"]),
+                sample_width=2,
+                frame_rate=media["rate"],
+            )
+
+            self.logger.info(
+                f"[{session_id}] Audio data saved to {filename} ({media["type"]}, format {media["format"]}, rate {media["rate"]}, channels {len(media["channels"])}"
+            )
+
             await self.send_message(
                 type=ServerMessageType.CLOSED, client_message=message
             )
@@ -239,9 +271,38 @@ class WebsocketServer:
             # TODO store session history in database, before removing
             del self.clients[session_id]
 
+    async def handle_connection_probe(self, message: dict):
+        """
+        Handle connection probe
+
+        To verify configuration settings before they are committed in the administration interface, the Genesys Cloud client attempts to establish a WebSocket connection to the configured URI followed by a synthetic AudioHook session.
+        This connection probe and synthetic session helps flagging integration configuration issues and verify minimal server compliance without needing manual test calls.
+        """
+        session_id = message["id"]
+        self.logger.info(
+            f"[{session_id}] Connection probe. Conversation should not be logged and transcribed."
+        )
+
+        await self.send_message(
+            type=ServerMessageType.OPENED,
+            client_message=message,
+            parameters={
+                "startPaused": False,
+                "media": [],
+            },
+        )
+
+        await self.send_message(
+            type=ClientMessageType.CLOSE,
+            client_message=message,
+            parameters={
+                "reason": CloseReason.END,
+            },
+        )
+
     async def handle_bytes(self, data: bytes, session_id: str):
         """
-        Handles audio stream in u-Law ("PCMU") and converts it to WAV format
+        Handles audio stream in u-Law ("PCMU")
 
         The audio in the frames for PCMU are headerless and the samples of two-channel streams are interleaved. For example, a 100ms audio frame in the format negotiated in the above example (PCMU, two channels, 8000Hz sample rate) would comprise 1600 bytes and have the following layout:
         The number of samples per frame is variable and is up to the client. There is a tradeoff between higher latency (larger frames) and higher overhead (smaller frames). The client will guarantee that frames only contain whole samples for all channels (i.e. the bytes of individual samples will not be split across frames). The server must not make any assumptions about audio frame sizes and maintain a timeline of the audio stream by counting the samples.
@@ -253,8 +314,13 @@ class WebsocketServer:
 
         media = self.clients[session_id].media
         self.logger.info(
-            f"[{session_id}] type {media['type']}, format {media['format']}, rate {media['rate']}"
+            f"[{session_id}] type {media["type"]}, format {media["format"]}, rate {
+                media["rate"]}, channels {len(media["channels"])}"
         )
 
-        # TODO implement audio storage (save fragments to WAV file)
-        # TODO implement Speech to Text processing logic
+        # Initialize or append to the audio buffer for the session
+        if self.clients[session_id].audio_buffer is None:
+            self.clients[session_id].audio_buffer = bytearray()
+        self.clients[session_id].audio_buffer.extend(data)
+
+        # TODO implement real-time Speech to Text processing logic

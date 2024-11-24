@@ -35,6 +35,7 @@ class ClientSession:
     rtt: list[int] = field(default_factory=list)
     last_rtt: int | None = None
     media: dict | None = None
+    audio_buffer: bytearray | None = None
 
 
 @dataclass(kw_only=True)
@@ -43,4 +44,3 @@ class HealthCheckResponse:
 
     status: str
     connected_clients: int
-    sessions: dict[str, ClientSession]
