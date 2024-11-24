@@ -44,4 +44,3 @@ class HealthCheckResponse:
 
     status: str
     connected_clients: int
-    sessions: dict[str, ClientSession]
