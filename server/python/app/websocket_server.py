@@ -339,6 +339,8 @@ class WebsocketServer:
         speech_config.speech_recognition_language = "en-US"
         speech_config.request_word_level_timestamps()
         speech_config.enable_audio_logging()
+        speech_config.enable_dictation()
+        speech_config.set_profanity(speechsdk.ProfanityOption.Removed)
 
         # TODO implement conversation transcriber for mono streams
         # speech_config.set_property(property_id=speechsdk.PropertyId.SpeechServiceResponse_DiarizeIntermediateResults, value='true')
@@ -349,6 +351,12 @@ class WebsocketServer:
         speech_recognizer = speechsdk.SpeechRecognizer(
             speech_config=speech_config, audio_config=audio_config
         )
+
+        # Phrase list
+        phrase_list_grammar = speechsdk.PhraseListGrammar.from_recognizer(
+            speech_recognizer
+        )
+        phrase_list_grammar.addPhrase("Contoso")
 
         recognition_done = threading.Event()
 
