@@ -1,5 +1,6 @@
 from typing import Any
 from dataclasses import dataclass, field
+import azure.cognitiveservices.speech as speechsdk
 
 
 @dataclass
@@ -35,7 +36,7 @@ class ClientSession:
     rtt: list[int] = field(default_factory=list)
     last_rtt: int | None = None
     media: dict | None = None
-    audio_buffer: bytearray | None = None
+    audio_buffer: speechsdk.audio.PushAudioInputStream | None = None
 
 
 @dataclass(kw_only=True)

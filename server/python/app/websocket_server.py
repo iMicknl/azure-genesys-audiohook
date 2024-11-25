@@ -1,10 +1,11 @@
+import asyncio
 import dataclasses
+import threading
 from quart import Quart, websocket
 import json
 import logging
 import os
 
-from .audio import save_to_wav
 from .enums import (
     CloseReason,
     DisconnectReason,
@@ -12,7 +13,7 @@ from .enums import (
     ServerMessageType,
 )
 from .models import ClientSession, HealthCheckResponse
-from datetime import datetime
+import azure.cognitiveservices.speech as speechsdk
 
 
 class WebsocketServer:
@@ -244,25 +245,10 @@ class WebsocketServer:
         parameters = message["parameters"]
         session_id = message["id"]
 
+        # Close audio buffer (and recognition) if the session is ended
+        self.clients[session_id].audio_buffer.close()
+
         if parameters["reason"] == CloseReason.END:
-            media = self.clients[session_id].media
-            timestamp = int(datetime.now().timestamp())
-            filename = f"{session_id}_{timestamp}.wav"
-
-            # Save the audio bytes to a WAV file
-            save_to_wav(
-                filename=filename,
-                format=media["format"],
-                audio_data=self.clients[session_id].audio_buffer,
-                channels=len(media["channels"]),
-                sample_width=2,
-                frame_rate=media["rate"],
-            )
-
-            self.logger.info(
-                f"[{session_id}] Audio data saved to {filename} ({media["type"]}, format {media["format"]}, rate {media["rate"]}, channels {len(media["channels"])}"
-            )
-
             await self.send_message(
                 type=ServerMessageType.CLOSED, client_message=message
             )
@@ -310,17 +296,96 @@ class WebsocketServer:
 
         position=\frac{samplesProcessed}{sampleRate}
         """
-        self.logger.info(f"[{session_id}] Received audio data. Byte size: {len(data)}")
+        self.logger.debug(f"[{session_id}] Received audio data. Byte size: {len(data)}")
 
         media = self.clients[session_id].media
-        self.logger.info(
-            f"[{session_id}] type {media["type"]}, format {media["format"]}, rate {
-                media["rate"]}, channels {len(media["channels"])}"
-        )
 
         # Initialize or append to the audio buffer for the session
         if self.clients[session_id].audio_buffer is None:
-            self.clients[session_id].audio_buffer = bytearray()
-        self.clients[session_id].audio_buffer.extend(data)
+            self.logger.info(
+                f"[{session_id}] type {media["type"]}, format {media["format"]}, rate {media["rate"]}, channels {len(media["channels"])}"
+            )
 
-        # TODO implement real-time Speech to Text processing logic
+            audio_format = speechsdk.audio.AudioStreamFormat(
+                samples_per_second=media["rate"],
+                bits_per_sample=8,
+                channels=len(media["channels"]),
+                wave_stream_format=speechsdk.AudioStreamWaveFormat.PCM,
+            )
+
+            stream = speechsdk.audio.PushAudioInputStream(stream_format=audio_format)
+            self.clients[session_id].audio_buffer = stream
+
+            # Start the speech recognition in a separate thread (background)
+            threading.Thread(
+                target=asyncio.run, args=(self.recognize_speech(session_id),)
+            ).start()
+
+        self.clients[session_id].audio_buffer.write(data)
+
+    async def recognize_speech(self, session_id: str):
+        """Recognize speech from audio buffer using Azure Speech to Text."""
+        SPEECH_KEY = os.getenv("AZURE_SPEECH_KEY")
+        REGION = os.getenv("AZURE_SPEECH_REGION")
+
+        self.logger.info(
+            f"[{session_id}] Starting Azure Speech to Text continous recognition."
+        )
+
+        speech_config = speechsdk.SpeechConfig(subscription=SPEECH_KEY, region=REGION)
+
+        # Speech configuration
+        speech_config.output_format = speechsdk.OutputFormat.Detailed
+        speech_config.speech_recognition_language = "en-US"
+        speech_config.request_word_level_timestamps()
+        speech_config.enable_audio_logging()
+
+        # TODO implement conversation transcriber for mono streams
+        # speech_config.set_property(property_id=speechsdk.PropertyId.SpeechServiceResponse_DiarizeIntermediateResults, value='true')
+
+        audio_config = speechsdk.audio.AudioConfig(
+            stream=self.clients[session_id].audio_buffer
+        )
+        speech_recognizer = speechsdk.SpeechRecognizer(
+            speech_config=speech_config, audio_config=audio_config
+        )
+
+        recognition_done = threading.Event()
+
+        # Connect callbacks to the events fired by the speech recognizer
+        def session_stopped_cb(event):
+            """Callback that signals to stop continuous recognition upon receiving an event."""
+            self.logger.info(f"[{session_id}] Session stopped: {event.session_id}")
+            recognition_done.set()
+
+        speech_recognizer.recognizing.connect(
+            lambda event: self.logger.info(f"[{session_id}] Recognizing: {event}")
+        )
+        speech_recognizer.recognized.connect(
+            lambda event: self.logger.info(f"[{session_id}] Recognized: {event}")
+        )
+        speech_recognizer.session_started.connect(
+            lambda event: self.logger.info(
+                f"[{session_id}] Session started: {event.session_id}"
+            )
+        )
+
+        speech_recognizer.canceled.connect(
+            lambda event: self.logger.info(
+                f"[{session_id}] Canceled: {event.session_id}"
+            )
+        )
+        speech_recognizer.session_stopped.connect(session_stopped_cb)
+
+        # Start continuous speech recognition
+        speech_recognizer.start_continuous_recognition()
+
+        # Wait until all input processed
+        recognition_done.wait()
+
+        # Stop recognition and clean up
+        speech_recognizer.stop_continuous_recognition()
+
+        self.logger.info(
+            f"[{session_id}] Stopped Azure Speech to Text continous recognition."
+        )
