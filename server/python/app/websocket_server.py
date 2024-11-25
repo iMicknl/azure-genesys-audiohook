@@ -378,13 +378,13 @@ class WebsocketServer:
         speech_recognizer.session_stopped.connect(session_stopped_cb)
 
         # Start continuous speech recognition
-        speech_recognizer.start_continuous_recognition()
+        speech_recognizer.start_continuous_recognition_async()
 
         # Wait until all input processed
         recognition_done.wait()
 
         # Stop recognition and clean up
-        speech_recognizer.stop_continuous_recognition()
+        speech_recognizer.stop_continuous_recognition_async()
 
         self.logger.info(
             f"[{session_id}] Stopped Azure Speech to Text continous recognition."
