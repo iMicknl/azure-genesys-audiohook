@@ -297,7 +297,6 @@ class WebsocketServer:
         position=\frac{samplesProcessed}{sampleRate}
         """
         self.logger.debug(f"[{session_id}] Received audio data. Byte size: {len(data)}")
-
         media = self.clients[session_id].media
 
         # Initialize or append to the audio buffer for the session
@@ -329,10 +328,12 @@ class WebsocketServer:
         REGION = os.getenv("AZURE_SPEECH_REGION")
 
         self.logger.info(
-            f"[{session_id}] Starting Azure Speech to Text continous recognition."
+            f"[{session_id}] Starting Azure Speech to Text continuous recognition."
         )
 
-        speech_config = speechsdk.SpeechConfig(subscription=SPEECH_KEY, region=REGION)
+        speech_config = speechsdk.SpeechConfig(
+            subscription=SPEECH_KEY, region=REGION
+        )  # TODO add managed identity
 
         # Speech configuration
         speech_config.output_format = speechsdk.OutputFormat.Detailed
@@ -361,17 +362,24 @@ class WebsocketServer:
         recognition_done = threading.Event()
 
         # Connect callbacks to the events fired by the speech recognizer
+        def recognizing_cb(event: speechsdk.SpeechRecognitionEventArgs):
+            """Callback that continuously logs the recognized speech."""
+            self.logger.info(f"[{session_id}] recognizing {event}")
+
+        def recognized_cb(event: speechsdk.SpeechRecognitionEventArgs):
+            """Callback that logs the recognized speech once the recognition is done."""
+            self.logger.info(f"[{session_id}] recognized {event}")
+
         def session_stopped_cb(event):
             """Callback that signals to stop continuous recognition upon receiving an event."""
             self.logger.info(f"[{session_id}] Session stopped: {event.session_id}")
             recognition_done.set()
 
-        speech_recognizer.recognizing.connect(
-            lambda event: self.logger.info(f"[{session_id}] Recognizing: {event}")
-        )
-        speech_recognizer.recognized.connect(
-            lambda event: self.logger.info(f"[{session_id}] Recognized: {event}")
-        )
+        # Connect callbacks to the events fired by the speech recognizer
+        speech_recognizer.recognizing.connect(recognizing_cb)
+        speech_recognizer.recognized.connect(recognized_cb)
+        speech_recognizer.session_stopped.connect(session_stopped_cb)
+
         speech_recognizer.session_started.connect(
             lambda event: self.logger.info(
                 f"[{session_id}] Session started: {event.session_id}"
@@ -383,17 +391,16 @@ class WebsocketServer:
                 f"[{session_id}] Canceled: {event.session_id}"
             )
         )
-        speech_recognizer.session_stopped.connect(session_stopped_cb)
 
         # Start continuous speech recognition
-        speech_recognizer.start_continuous_recognition_async()
+        speech_recognizer.start_continuous_recognition()  # TODO or use _async version
 
         # Wait until all input processed
         recognition_done.wait()
 
         # Stop recognition and clean up
-        speech_recognizer.stop_continuous_recognition_async()
+        speech_recognizer.stop_continuous_recognition()
 
         self.logger.info(
-            f"[{session_id}] Stopped Azure Speech to Text continous recognition."
+            f"[{session_id}] Stopped Azure Speech to Text continuous recognition."
         )
