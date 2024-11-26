@@ -328,10 +328,6 @@ class WebsocketServer:
         SPEECH_KEY = os.getenv("AZURE_SPEECH_KEY")
         REGION = os.getenv("AZURE_SPEECH_REGION")
 
-        self.logger.info(
-            f"[{session_id}] Starting Azure Speech to Text continuous recognition."
-        )
-
         speech_config = speechsdk.SpeechConfig(
             subscription=SPEECH_KEY, region=REGION
         )  # TODO add managed identity support
@@ -392,6 +388,8 @@ class WebsocketServer:
                 f"[{session_id}] Canceled: {event.session_id}"
             )
         )
+
+        self.logger.info(f"[{session_id}] Starting continuous recognition.")
 
         # Start continuous speech recognition
         speech_recognizer.start_continuous_recognition()  # TODO or use _async version
