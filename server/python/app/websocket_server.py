@@ -299,7 +299,7 @@ class WebsocketServer:
         self.logger.debug(f"[{session_id}] Received audio data. Byte size: {len(data)}")
         media = self.clients[session_id].media
 
-        # Initialize or append to the audio buffer for the session
+        # Initialize the audio buffer for the session
         if self.clients[session_id].audio_buffer is None:
             self.logger.info(
                 f"[{session_id}] type {media["type"]}, format {media["format"]}, rate {media["rate"]}, channels {len(media["channels"])}"
@@ -320,6 +320,7 @@ class WebsocketServer:
                 target=asyncio.run, args=(self.recognize_speech(session_id),)
             ).start()
 
+        # Append the buffers to the audio stream
         self.clients[session_id].audio_buffer.write(data)
 
     async def recognize_speech(self, session_id: str):
@@ -333,11 +334,11 @@ class WebsocketServer:
 
         speech_config = speechsdk.SpeechConfig(
             subscription=SPEECH_KEY, region=REGION
-        )  # TODO add managed identity
+        )  # TODO add managed identity support
 
         # Speech configuration
         speech_config.output_format = speechsdk.OutputFormat.Detailed
-        speech_config.speech_recognition_language = "en-US"
+        speech_config.speech_recognition_language = "en-US"  # TODO add continuous LID
         speech_config.request_word_level_timestamps()
         speech_config.enable_audio_logging()
         speech_config.enable_dictation()
@@ -401,6 +402,4 @@ class WebsocketServer:
         # Stop recognition and clean up
         speech_recognizer.stop_continuous_recognition()
 
-        self.logger.info(
-            f"[{session_id}] Stopped Azure Speech to Text continuous recognition."
-        )
+        self.logger.info(f"[{session_id}] Stopped continuous recognition.")
