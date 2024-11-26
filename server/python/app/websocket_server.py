@@ -361,11 +361,11 @@ class WebsocketServer:
         # Connect callbacks to the events fired by the speech recognizer
         def recognizing_cb(event: speechsdk.SpeechRecognitionEventArgs):
             """Callback that continuously logs the recognized speech."""
-            self.logger.info(f"[{session_id}] recognizing {event}")
+            self.logger.info(f"[{session_id}] Recognizing {event}")
 
         def recognized_cb(event: speechsdk.SpeechRecognitionEventArgs):
             """Callback that logs the recognized speech once the recognition is done."""
-            self.logger.info(f"[{session_id}] recognized {event}")
+            self.logger.info(f"[{session_id}] Recognized {event}")
 
         def session_stopped_cb(event):
             """Callback that signals to stop continuous recognition upon receiving an event."""
