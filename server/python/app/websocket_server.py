@@ -249,6 +249,8 @@ class WebsocketServer:
         self.clients[session_id].audio_buffer.close()
 
         if parameters["reason"] == CloseReason.END:
+            self.logger.info(self.clients[session_id].transcript)
+
             await self.send_message(
                 type=ServerMessageType.CLOSED, client_message=message
             )
@@ -366,6 +368,7 @@ class WebsocketServer:
         def recognized_cb(event: speechsdk.SpeechRecognitionEventArgs):
             """Callback that logs the recognized speech once the recognition is done."""
             self.logger.info(f"[{session_id}] Recognized {event}")
+            self.clients[session_id].transcript += event.result.text
 
         def session_stopped_cb(event):
             """Callback that signals to stop continuous recognition upon receiving an event."""

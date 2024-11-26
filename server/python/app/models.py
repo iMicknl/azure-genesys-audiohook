@@ -37,6 +37,7 @@ class ClientSession:
     last_rtt: int | None = None
     media: dict | None = None
     audio_buffer: speechsdk.audio.PushAudioInputStream | None = None
+    transcript: str = ""
 
 
 @dataclass(kw_only=True)
