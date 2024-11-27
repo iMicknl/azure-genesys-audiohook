@@ -258,6 +258,8 @@ class WebsocketServer:
         # Close audio buffer (and recognition) if the session is ended
         self.clients[session_id].audio_buffer.close()
 
+        # TODO retrieve raw bytes from PushAudioInputStream and store wav in Azure Blob Storage
+
         if parameters["reason"] == CloseReason.END:
             self.logger.info(self.clients[session_id].transcript)
 
@@ -320,7 +322,7 @@ class WebsocketServer:
             audio_format = speechsdk.audio.AudioStreamFormat(
                 samples_per_second=media["rate"],
                 bits_per_sample=8,
-                channels=len(media["channels"]),
+                channels=1,
                 wave_stream_format=speechsdk.AudioStreamWaveFormat.PCM,
             )
 
@@ -334,6 +336,19 @@ class WebsocketServer:
 
         # Append the buffers to the audio stream
         self.clients[session_id].audio_buffer.write(data)
+
+        # if len(media["channels"]) == 2:
+        #     # Split stereo audio into two mono tracks
+        #     left_channel = bytearray()
+        #     right_channel = bytearray()
+
+        #     for i in range(0, len(data), 2):
+        #         left_channel.append(data[i])
+        #         right_channel.append(data[i + 1])
+
+        #     # Process left and right channels separately
+        #     self.clients[session_id].audio_buffer.write(bytes(left_channel))
+        # self.clients[session_id].audio_buffer.write(bytes(right_channel))
 
     async def recognize_speech(self, session_id: str):
         """Recognize speech from audio buffer using Azure Speech to Text."""

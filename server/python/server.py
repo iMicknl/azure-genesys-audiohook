@@ -8,7 +8,7 @@ from app.websocket_server import WebsocketServer
 if os.getenv("RUNNING_IN_PRODUCTION") and os.getenv("DEBUG_MODE") != "true":
     logging.basicConfig(level=logging.WARNING)
 else:
-    logging.basicConfig(level=logging.INFO)
+    logging.basicConfig(level=logging.DEBUG)
 
 # Run development server when running this script directly.
 # For production it is recommended that Quart will be run using Hypercorn or an alternative ASGI server.
