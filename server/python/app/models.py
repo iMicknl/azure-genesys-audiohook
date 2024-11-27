@@ -46,3 +46,4 @@ class HealthCheckResponse:
 
     status: str
     connected_clients: int
+    client_sessions: list[ClientSession]

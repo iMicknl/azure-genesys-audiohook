@@ -36,9 +36,19 @@ class WebsocketServer:
 
     async def health_check(self):
         """Health check endpoint"""
-        # TODO this won't show the right amount of connected clients with multiple workers (each worker will have its own memory storage)
+        # TODO this won't show the right details when used with multiple workers (each worker will have its own memory storage)
+        # Remove audio buffer from the response to avoid serialization issues
+        connected_clients = {
+            session_id: dataclasses.replace(client, audio_buffer=None)
+            for session_id, client in self.clients.items()
+        }
+
         return dataclasses.asdict(
-            HealthCheckResponse(status="online", connected_clients=len(self.clients))
+            HealthCheckResponse(
+                status="online",
+                connected_clients=len(connected_clients),
+                client_sessions=connected_clients,
+            )
         )
 
     async def ws(self):
