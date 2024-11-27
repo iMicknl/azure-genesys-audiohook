@@ -380,19 +380,6 @@ class WebsocketServer:
         self.clients[session_id].audio_buffer.write(data)
         self.clients[session_id].raw_audio_buffer += data
 
-        # if len(media["channels"]) == 2:
-        #     # Split stereo audio into two mono tracks
-        #     left_channel = bytearray()
-        #     right_channel = bytearray()
-
-        #     for i in range(0, len(data), 2):
-        #         left_channel.append(data[i])
-        #         right_channel.append(data[i + 1])
-
-        #     # Process left and right channels separately
-        #     self.clients[session_id].audio_buffer.write(bytes(left_channel))
-        # self.clients[session_id].audio_buffer.write(bytes(right_channel))
-
     async def recognize_speech(self, session_id: str):
         """Recognize speech from audio buffer using Azure Speech to Text."""
         SPEECH_KEY = os.getenv("AZURE_SPEECH_KEY")
