@@ -5,11 +5,11 @@ from quart import Quart, websocket
 import json
 import logging
 import os
-from azure.identity.aio import DefaultAzureCredential
 from azure.storage.blob.aio import BlobServiceClient
 
 from .storage import upload_blob_file
 from .audio import convert_to_wav
+from .identity import get_azure_credential_async, get_speech_token
 
 from .enums import (
     CloseReason,
@@ -292,7 +292,7 @@ class WebsocketServer:
                 )
             elif account_url := os.getenv("AZURE_STORAGE_ACCOUNT_URL"):
                 blob_service_client = BlobServiceClient(
-                    account_url, credential=DefaultAzureCredential()
+                    account_url, credential=get_azure_credential_async()
                 )  # TODO cache DefaultAzureCredential
 
             if blob_service_client:
@@ -382,12 +382,17 @@ class WebsocketServer:
 
     async def recognize_speech(self, session_id: str):
         """Recognize speech from audio buffer using Azure Speech to Text."""
-        SPEECH_KEY = os.getenv("AZURE_SPEECH_KEY")
-        REGION = os.getenv("AZURE_SPEECH_REGION")
 
-        speech_config = speechsdk.SpeechConfig(
-            subscription=SPEECH_KEY, region=REGION
-        )  # TODO add managed identity support
+        if os.getenv("AZURE_SPEECH_KEY"):
+            speech_config = speechsdk.SpeechConfig(
+                subscription=os.environ["AZURE_SPEECH_KEY"],
+                region=os.environ["AZURE_SPEECH_REGION"],
+            )
+        else:
+            speech_config = speechsdk.SpeechConfig(
+                auth_token=get_speech_token(os.environ["AZURE_SPEECH_RESOURCE_ID"]),
+                region=os.environ["AZURE_SPEECH_REGION"],
+            )
 
         # Speech configuration
         speech_config.output_format = speechsdk.OutputFormat.Detailed
