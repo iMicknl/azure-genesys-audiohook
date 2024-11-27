@@ -15,7 +15,8 @@ async def upload_blob_file(
     """Uploads a file to a blob storage container."""
 
     blob_client = blob_service_client.get_blob_client(
-        container=container_name, blob=file_name
+        container=container_name,
+        blob=file_name,
     )
 
     await blob_client.upload_blob(
@@ -25,5 +26,4 @@ async def upload_blob_file(
         content_settings=(
             ContentSettings(content_type=content_type) if content_type else None
         ),
-        connection_timeout=15,
     )
