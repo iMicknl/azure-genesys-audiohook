@@ -5,6 +5,7 @@ description = "A reference implementation of a WebSocket server on Azure, design
 readme = "README.md"
 requires-python = ">=3.12"
 dependencies = [
+    "aiohttp>=3.11.7",
     "azure-cognitiveservices-speech>=1.40.0",
     "azure-identity>=1.19.0",
     "azure-storage-blob>=12.24.0",
