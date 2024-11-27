@@ -266,39 +266,6 @@ class WebsocketServer:
         # Close audio buffer (and recognition) if the session is ended
         self.clients[session_id].audio_buffer.close()
 
-        # Save WAV file from raw audio buffer
-        # TODO retrieve raw bytes from PushAudioInputStream to avoid saving two buffers
-        wav_file = convert_to_wav(
-            format=self.clients[session_id].media["format"],
-            audio_data=self.clients[session_id].raw_audio_buffer,
-            channels=len(self.clients[session_id].media["channels"]),
-            sample_width=2,  # 16 bits per sample
-            frame_rate=self.clients[session_id].media["rate"],
-        )
-
-        # Upload the WAV file to Azure Blob Storages
-        blob_service_client = None
-        if connection_string := os.getenv("AZURE_STORAGE_CONNECTION_STRING"):
-            blob_service_client = BlobServiceClient.from_connection_string(
-                connection_string
-            )
-        elif account_url := os.getenv("AZURE_STORAGE_ACCOUNT_URL"):
-            blob_service_client = BlobServiceClient(
-                account_url, credential=DefaultAzureCredential()
-            )  # TODO cache DefaultAzureCredential
-
-        if blob_service_client:
-            await upload_blob_file(
-                blob_service_client=blob_service_client,
-                container_name=os.getenv("AZURE_STORAGE_ACCOUNT_CONTAINER", "audio"),
-                file_name=f"{session_id}.wav",
-                data=wav_file,
-                content_type="audio/wav",
-            )
-            self.logger.info(
-                f"[{session_id}] WAV file saved to Azure Blob Storage: {session_id}.wav"
-            )
-
         if parameters["reason"] == CloseReason.END:
             self.logger.info(self.clients[session_id].transcript)
 
@@ -306,6 +273,41 @@ class WebsocketServer:
                 type=ServerMessageType.CLOSED, client_message=message
             )
             await websocket.close(1000)
+
+            # Save WAV file from raw audio buffer
+            # TODO retrieve raw bytes from PushAudioInputStream to avoid saving two buffers
+            wav_file = convert_to_wav(
+                format=self.clients[session_id].media["format"],
+                audio_data=self.clients[session_id].raw_audio_buffer,
+                channels=len(self.clients[session_id].media["channels"]),
+                sample_width=2,  # 16 bits per sample
+                frame_rate=self.clients[session_id].media["rate"],
+            )
+
+            # Upload the WAV file to Azure Blob Storage
+            blob_service_client = None
+            if connection_string := os.getenv("AZURE_STORAGE_CONNECTION_STRING"):
+                blob_service_client = BlobServiceClient.from_connection_string(
+                    connection_string
+                )
+            elif account_url := os.getenv("AZURE_STORAGE_ACCOUNT_URL"):
+                blob_service_client = BlobServiceClient(
+                    account_url, credential=DefaultAzureCredential()
+                )  # TODO cache DefaultAzureCredential
+
+            if blob_service_client:
+                await upload_blob_file(
+                    blob_service_client=blob_service_client,
+                    container_name=os.getenv(
+                        "AZURE_STORAGE_ACCOUNT_CONTAINER", "audio"
+                    ),
+                    file_name=f"{session_id}.wav",
+                    data=wav_file,
+                    content_type="audio/wav",
+                )
+                self.logger.info(
+                    f"[{session_id}] WAV file saved to Azure Blob Storage: {session_id}.wav"
+                )
 
             # TODO store session history in database, before removing
             del self.clients[session_id]
