@@ -1,25 +1,24 @@
 import asyncio
 import dataclasses
-import threading
-from quart import Quart, websocket
 import json
 import logging
 import os
-from azure.storage.blob.aio import BlobServiceClient
-
-from .storage import upload_blob_file
-from .audio import convert_to_wav
-from .identity import get_azure_credential_async, get_speech_token
-
-from .enums import (
-    CloseReason,
-    DisconnectReason,
-    ClientMessageType,
-    ServerMessageType,
-)
-from .models import ClientSession, HealthCheckResponse
+import threading
 
 import azure.cognitiveservices.speech as speechsdk
+from azure.storage.blob.aio import BlobServiceClient
+from quart import Quart, websocket
+
+from .audio import convert_to_wav
+from .enums import (
+    ClientMessageType,
+    CloseReason,
+    DisconnectReason,
+    ServerMessageType,
+)
+from .identity import get_azure_credential_async, get_speech_token
+from .models import ClientSession, HealthCheckResponse
+from .storage import upload_blob_file
 
 
 class WebsocketServer:
