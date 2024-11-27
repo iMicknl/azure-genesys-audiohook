@@ -25,4 +25,5 @@ async def upload_blob_file(
         content_settings=(
             ContentSettings(content_type=content_type) if content_type else None
         ),
+        connection_timeout=15,
     )
