@@ -1,8 +1,8 @@
 """Identity utilities for the server."""
 
 from azure.core.credentials import AccessToken
-from azure.identity.aio import DefaultAzureCredential as DefaultAzureCredentialAsync
 from azure.identity import DefaultAzureCredential
+from azure.identity.aio import DefaultAzureCredential as DefaultAzureCredentialAsync
 
 
 def get_azure_credential() -> DefaultAzureCredential:

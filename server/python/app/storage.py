@@ -1,7 +1,7 @@
 """Storage utilities for the server."""
 
-from azure.storage.blob.aio import BlobServiceClient
 from azure.storage.blob import ContentSettings
+from azure.storage.blob.aio import BlobServiceClient
 
 
 async def upload_blob_file(
@@ -11,20 +11,18 @@ async def upload_blob_file(
     data: bytes,
     content_type: str | None = None,
     overwrite: bool = True,
-):
+) -> None:
     """Uploads a file to a blob storage container."""
 
-    container_client = blob_service_client.get_container_client(
-        container=container_name
+    blob_client = blob_service_client.get_blob_client(
+        container=container_name, blob=file_name
     )
 
-    content_settings = None
-    if content_type:
-        content_settings = ContentSettings(content_type=content_type)
-
-    await container_client.upload_blob(
-        name=file_name,
-        data=data,
+    await blob_client.upload_blob(
+        data,
+        blob_type="BlockBlob",
         overwrite=overwrite,
-        content_settings=content_settings,
+        content_settings=(
+            ContentSettings(content_type=content_type) if content_type else None
+        ),
     )

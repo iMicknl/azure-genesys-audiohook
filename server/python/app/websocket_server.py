@@ -295,6 +295,10 @@ class WebsocketServer:
 
             # Upload the WAV file to Azure Blob Storage
             if self.blob_service_client:
+                self.logger.debug(
+                    f"[{session_id}] Saving WAV file to Azure Blob Storage ({session_id}.wav)."
+                )
+
                 await upload_blob_file(
                     blob_service_client=self.blob_service_client,
                     container_name=os.getenv(
@@ -304,6 +308,7 @@ class WebsocketServer:
                     data=wav_file,
                     content_type="audio/wav",
                 )
+
                 self.logger.info(
                     f"[{session_id}] WAV file saved to Azure Blob Storage: {session_id}.wav"
                 )
