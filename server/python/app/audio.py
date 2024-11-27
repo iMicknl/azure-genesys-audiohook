@@ -18,6 +18,7 @@ def convert_to_wav(
 
     # Convert the linear PCMU data to bytes
     if format == MediaFormat.PCMU:
+        # TODO DeprecationWarning: 'audioop' is deprecated and slated for removal in Python 3.13.
         audio_data = audioop.ulaw2lin(audio_data, sample_width)
 
     buffer = io.BytesIO()

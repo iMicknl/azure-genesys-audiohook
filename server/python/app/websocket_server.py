@@ -29,11 +29,21 @@ class WebsocketServer:
         str, ClientSession
     ] = {}  # TODO make app stateless, keep state in CosmosDB?
     logger: logging.Logger = logging.getLogger(__name__)
+    blob_service_client: BlobServiceClient | None = None
 
     def __init__(self):
         """Initialize the server"""
         self.app = Quart(__name__)
         self.setup_routes()
+
+        if connection_string := os.getenv("AZURE_STORAGE_CONNECTION_STRING"):
+            self.blob_service_client = BlobServiceClient.from_connection_string(
+                connection_string
+            )
+        elif account_url := os.getenv("AZURE_STORAGE_ACCOUNT_URL"):
+            self.blob_service_client = BlobServiceClient(
+                account_url, credential=get_azure_credential_async()
+            )  # TODO cache DefaultAzureCredential
 
     def setup_routes(self):
         """Setup the routes for the server"""
@@ -285,19 +295,9 @@ class WebsocketServer:
             )
 
             # Upload the WAV file to Azure Blob Storage
-            blob_service_client = None
-            if connection_string := os.getenv("AZURE_STORAGE_CONNECTION_STRING"):
-                blob_service_client = BlobServiceClient.from_connection_string(
-                    connection_string
-                )
-            elif account_url := os.getenv("AZURE_STORAGE_ACCOUNT_URL"):
-                blob_service_client = BlobServiceClient(
-                    account_url, credential=get_azure_credential_async()
-                )  # TODO cache DefaultAzureCredential
-
-            if blob_service_client:
+            if self.blob_service_client:
                 await upload_blob_file(
-                    blob_service_client=blob_service_client,
+                    blob_service_client=self.blob_service_client,
                     container_name=os.getenv(
                         "AZURE_STORAGE_ACCOUNT_CONTAINER", "audio"
                     ),

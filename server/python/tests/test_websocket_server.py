@@ -24,7 +24,10 @@ async def test_health_check(app):
     response = await app.get("/")
 
     assert response.status_code == 200
-    assert await response.data == b'{"connected_clients":0,"status":"online"}\n'
+    assert (
+        await response.data
+        == b'{"client_sessions":{},"connected_clients":0,"status":"online"}\n'
+    )
 
 
 @pytest.mark.asyncio

@@ -12,7 +12,7 @@ def get_azure_credential() -> DefaultAzureCredential:
 
 
 def get_azure_credential_async() -> DefaultAzureCredentialAsync:
-    """Get Azure credential."""
+    """Get async Azure credential."""
 
     return DefaultAzureCredentialAsync()
 
