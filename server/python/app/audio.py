@@ -1,36 +1,30 @@
 """Audio utilities for the server."""
 
-import numpy as np
 import wave
 
 from .enums import MediaFormat
+import audioop
+import io
 
 
-def ulaw2linear(ulaw):
-    """Convert u-Law encoded bytes to Linear-16 PCM values"""
-    ulaw = np.frombuffer(ulaw, dtype=np.uint8)
-    ulaw = ulaw.astype(np.int16)
-    ulaw = ulaw ^ 0xFF
-    sign = ulaw & 0x80
-    exponent = (ulaw & 0x70) >> 4
-    mantissa = ulaw & 0x0F
-    linear = (mantissa << 4) + 0x08
-    linear = linear << exponent
-    linear = np.where(sign != 0, linear - 0x84, 0x84 - linear)
-
-    return linear
-
-
-def save_to_wav(filename, format, audio_data, channels, sample_width, frame_rate):
-    """Save audio data to a WAV file."""
+def convert_to_wav(
+    format: MediaFormat,
+    audio_data: bytes,
+    channels: int,
+    sample_width: int,
+    frame_rate: int,
+) -> bytes:
+    """Convert audio data to WAV format and return as bytes."""
 
     # Convert the linear PCMU data to bytes
     if format == MediaFormat.PCMU:
-        linear_pcm = ulaw2linear(audio_data)
-        audio_data = linear_pcm.tobytes()
+        audio_data = audioop.ulaw2lin(audio_data, sample_width)
 
-    with wave.open(filename, "wb") as wav_file:
+    buffer = io.BytesIO()
+    with wave.open(buffer, "wb") as wav_file:
         wav_file.setnchannels(channels)
         wav_file.setsampwidth(sample_width)
         wav_file.setframerate(frame_rate)
         wav_file.writeframes(audio_data)
+
+    return buffer.getvalue()

@@ -6,6 +6,8 @@ import json
 import logging
 import os
 
+from .audio import convert_to_wav
+
 from .enums import (
     CloseReason,
     DisconnectReason,
@@ -13,6 +15,7 @@ from .enums import (
     ServerMessageType,
 )
 from .models import ClientSession, HealthCheckResponse
+
 import azure.cognitiveservices.speech as speechsdk
 
 
@@ -39,7 +42,9 @@ class WebsocketServer:
         # TODO this won't show the right details when used with multiple workers (each worker will have its own memory storage)
         # Remove audio buffer from the response to avoid serialization issues
         connected_clients = {
-            session_id: dataclasses.replace(client, audio_buffer=None)
+            session_id: dataclasses.replace(
+                client, audio_buffer=None, raw_audio_buffer=None
+            )
             for session_id, client in self.clients.items()
         }
 
@@ -258,7 +263,20 @@ class WebsocketServer:
         # Close audio buffer (and recognition) if the session is ended
         self.clients[session_id].audio_buffer.close()
 
+        # Save WAV file from raw audio buffer
         # TODO retrieve raw bytes from PushAudioInputStream and store wav in Azure Blob Storage
+        wav_file = convert_to_wav(
+            format=self.clients[session_id].media["format"],
+            audio_data=self.clients[session_id].raw_audio_buffer,
+            channels=len(self.clients[session_id].media["channels"]),
+            sample_width=2,  # 16 bits per sample
+            frame_rate=self.clients[session_id].media["rate"],
+        )
+
+        # TODO temporary save to disk
+        with open(f"{session_id}.wav", "wb") as f:
+            f.write(wav_file)
+        self.logger.info(f"[{session_id}] WAV file saved: {session_id}.wav")
 
         if parameters["reason"] == CloseReason.END:
             self.logger.info(self.clients[session_id].transcript)
@@ -328,6 +346,7 @@ class WebsocketServer:
 
             stream = speechsdk.audio.PushAudioInputStream(stream_format=audio_format)
             self.clients[session_id].audio_buffer = stream
+            self.clients[session_id].raw_audio_buffer = bytearray()
 
             # Start the speech recognition in a separate thread (background)
             threading.Thread(
@@ -336,6 +355,7 @@ class WebsocketServer:
 
         # Append the buffers to the audio stream
         self.clients[session_id].audio_buffer.write(data)
+        self.clients[session_id].raw_audio_buffer += data
 
         # if len(media["channels"]) == 2:
         #     # Split stereo audio into two mono tracks

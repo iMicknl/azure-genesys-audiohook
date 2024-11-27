@@ -36,6 +36,7 @@ class ClientSession:
     rtt: list[int] = field(default_factory=list)
     last_rtt: int | None = None
     media: dict | None = None
+    raw_audio_buffer: bytes | None = None
     audio_buffer: speechsdk.audio.PushAudioInputStream | None = None
     transcript: str = ""
 
