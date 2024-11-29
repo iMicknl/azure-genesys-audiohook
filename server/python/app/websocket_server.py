@@ -6,7 +6,7 @@ import os
 import threading
 
 import azure.cognitiveservices.speech as speechsdk
-from azure.storage.blob.aio import BlobServiceClient
+from azure.storage.blob import BlobServiceClient
 from quart import Quart, websocket
 
 from .audio import convert_to_wav
@@ -16,7 +16,7 @@ from .enums import (
     DisconnectReason,
     ServerMessageType,
 )
-from .identity import get_azure_credential_async, get_speech_token
+from .identity import get_azure_credential, get_speech_token
 from .models import ClientSession, HealthCheckResponse
 from .storage import upload_blob_file
 
@@ -34,20 +34,29 @@ class WebsocketServer:
         """Initialize the server"""
         self.app = Quart(__name__)
         self.setup_routes()
+        self.app.before_serving(self.create_connections)
+        self.app.after_serving(self.close_connections)
 
+    def setup_routes(self):
+        """Setup the routes for the server"""
+        self.app.route("/")(self.health_check)
+        self.app.websocket("/ws")(self.ws)
+
+    async def create_connections(self):
+        """Create connections before serving"""
         if connection_string := os.getenv("AZURE_STORAGE_CONNECTION_STRING"):
             self.blob_service_client = BlobServiceClient.from_connection_string(
                 connection_string
             )
         elif account_url := os.getenv("AZURE_STORAGE_ACCOUNT_URL"):
             self.blob_service_client = BlobServiceClient(
-                account_url, credential=get_azure_credential_async()
+                account_url, credential=get_azure_credential()
             )  # TODO cache DefaultAzureCredential
 
-    def setup_routes(self):
-        """Setup the routes for the server"""
-        self.app.route("/")(self.health_check)
-        self.app.websocket("/ws")(self.ws)
+    async def close_connections(self):
+        """Close connections after serving"""
+        if self.blob_service_client:
+            await self.blob_service_client.close()
 
     async def health_check(self):
         """Health check endpoint"""
@@ -376,6 +385,7 @@ class WebsocketServer:
             self.clients[session_id].raw_audio_buffer = bytearray()
 
             # Start the speech recognition in a separate thread (background)
+            # TODO possible rewrite to https://quart.palletsprojects.com/en/latest/how_to_guides/sync_code.html
             threading.Thread(
                 target=asyncio.run, args=(self.recognize_speech(session_id),)
             ).start()
