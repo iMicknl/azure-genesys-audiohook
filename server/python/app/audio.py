@@ -1,10 +1,10 @@
 """Audio utilities for the server."""
 
+import audioop
+import io
 import wave
 
 from .enums import MediaFormat
-import audioop
-import io
 
 
 def convert_to_wav(
@@ -16,8 +16,10 @@ def convert_to_wav(
 ) -> bytes:
     """Convert audio data to WAV format and return as bytes."""
 
-    # Convert the linear PCMU data to bytes
     if format == MediaFormat.PCMU:
+        # Convert sound fragments in u-LAW encoding to linearly encoded sound fragments.
+        # u-LAW encoding always uses 8 bits samples, so *width* refers only to the sample
+        # width of the output fragment here.
         # TODO DeprecationWarning: 'audioop' is deprecated and slated for removal in Python 3.13.
         audio_data = audioop.ulaw2lin(audio_data, sample_width)
 
