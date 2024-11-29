@@ -14,6 +14,7 @@ dependencies = [
     "python-dotenv>=1.0.1",
     "quart>=0.19.6",
     "uvicorn>=0.30.6",
+    "audioop-lts; python_version>='3.13'",
 ]
 
 [tool.uv]
