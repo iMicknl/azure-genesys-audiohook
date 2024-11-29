@@ -62,8 +62,7 @@ az containerapp up --resource-group your-resource-group \
 ```
 
 ## TODO
-- Add support for Azure Blob Storage for saving audio files
-- Add support for Azure AI Speech / Azure OpenAI Whisper for speech-to-text
 - Add extensive logging frameworks
 - Make application stateless
 - Add retry handling and reconnect on disconnect
+- Benchmarks and performance testing, optimize for performance
