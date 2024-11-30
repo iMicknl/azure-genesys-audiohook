@@ -6,7 +6,7 @@ import os
 import threading
 
 import azure.cognitiveservices.speech as speechsdk
-from azure.storage.blob import BlobServiceClient
+from azure.storage.blob.aio import BlobServiceClient
 from quart import Quart, websocket
 
 from .audio import convert_to_wav
@@ -16,7 +16,7 @@ from .enums import (
     DisconnectReason,
     ServerMessageType,
 )
-from .identity import get_azure_credential, get_speech_token
+from .identity import get_azure_credential_async, get_speech_token
 from .models import ClientSession, HealthCheckResponse
 from .storage import upload_blob_file
 
@@ -50,7 +50,7 @@ class WebsocketServer:
             )
         elif account_url := os.getenv("AZURE_STORAGE_ACCOUNT_URL"):
             self.blob_service_client = BlobServiceClient(
-                account_url, credential=get_azure_credential()
+                account_url, credential=get_azure_credential_async()
             )  # TODO cache DefaultAzureCredential
 
     async def close_connections(self):
