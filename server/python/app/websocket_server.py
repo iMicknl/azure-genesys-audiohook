@@ -4,19 +4,23 @@ import json
 import logging
 import os
 import threading
+from typing import Any
 
 import azure.cognitiveservices.speech as speechsdk
-from azure.storage.blob import BlobServiceClient
+from azure.eventhub import EventData
+from azure.eventhub.aio import EventHubProducerClient
+from azure.storage.blob.aio import BlobServiceClient
 from quart import Quart, websocket
 
 from .audio import convert_to_wav
 from .enums import (
+    AzureGenesysEvent,
     ClientMessageType,
     CloseReason,
     DisconnectReason,
     ServerMessageType,
 )
-from .identity import get_azure_credential, get_speech_token
+from .identity import get_azure_credential_async, get_speech_token
 from .models import ClientSession, HealthCheckResponse
 from .storage import upload_blob_file
 
@@ -29,6 +33,7 @@ class WebsocketServer:
     ] = {}  # TODO make app stateless, keep state in CosmosDB?
     logger: logging.Logger = logging.getLogger(__name__)
     blob_service_client: BlobServiceClient | None = None
+    producer_client: EventHubProducerClient | None = None
 
     def __init__(self):
         """Initialize the server"""
@@ -50,13 +55,28 @@ class WebsocketServer:
             )
         elif account_url := os.getenv("AZURE_STORAGE_ACCOUNT_URL"):
             self.blob_service_client = BlobServiceClient(
-                account_url, credential=get_azure_credential()
+                account_url, credential=get_azure_credential_async()
             )  # TODO cache DefaultAzureCredential
+
+        if fully_qualified_namespace := os.getenv("AZURE_EVENT_HUB_HOSTNAME"):
+            self.producer_client = EventHubProducerClient(
+                fully_qualified_namespace=fully_qualified_namespace,
+                eventhub_name=os.environ["AZURE_EVENT_HUB_NAME"],
+                credential=get_azure_credential_async(),
+            )
+        elif connection_string := os.getenv("AZURE_EVENT_HUB_CONNECTION_STRING"):
+            self.producer_client = EventHubProducerClient.from_connection_string(
+                conn_str=connection_string,
+                eventhub_name=os.environ["AZURE_EVENT_HUB_NAME"],
+            )
 
     async def close_connections(self):
         """Close connections after serving"""
         if self.blob_service_client:
             await self.blob_service_client.close()
+
+        if self.producer_client:
+            await self.producer_client.close()
 
     async def health_check(self):
         """Health check endpoint"""
@@ -120,6 +140,7 @@ class WebsocketServer:
 
         # Open the websocket connection and start receiving data (messages / audio)
         while True:
+            # TODO Handle disconnection https://quart.palletsprojects.com/en/latest/how_to_guides/websockets.html#detecting-disconnection
             data = await websocket.receive()
 
             if isinstance(data, str):
@@ -268,6 +289,19 @@ class WebsocketServer:
         self.logger.info(f"[{session_id}] Session opened with media: {selected_media}")
         self.clients[session_id].media = selected_media
 
+        await self.send_event(
+            event=AzureGenesysEvent.SESSION_STARTED,
+            session_id=session_id,
+            message={
+                "ani-name": ani_name,
+                "conversation-id": conversation_id,
+                "dnis": dnis,
+                "media": selected_media,
+                "position": position,
+            },
+            properties={},
+        )
+
     async def handle_update_message(self, message: dict):
         """Handle update message"""
         parameters = message["parameters"]
@@ -287,10 +321,11 @@ class WebsocketServer:
         if parameters["reason"] == CloseReason.END:
             self.logger.info(self.clients[session_id].transcript)
 
-            await self.send_message(
-                type=ServerMessageType.CLOSED, client_message=message
+            await self.send_event(
+                event=AzureGenesysEvent.TRANSCRIPT_AVAILABLE,
+                session_id=session_id,
+                message={"transcript": self.clients[session_id].transcript},
             )
-            await websocket.close(1000)
 
             # Save WAV file from raw audio buffer
             # TODO retrieve raw bytes from PushAudioInputStream to avoid saving two buffers
@@ -321,6 +356,18 @@ class WebsocketServer:
                 self.logger.info(
                     f"[{session_id}] WAV file saved to Azure Blob Storage: {session_id}.wav"
                 )
+
+                await self.send_event(
+                    event=AzureGenesysEvent.RECORDING_AVAILABLE,
+                    session_id=session_id,
+                    message={"filename": f"{session_id}.wav"},
+                )
+
+            await self.send_message(
+                type=ServerMessageType.CLOSED, client_message=message
+            )
+
+            await websocket.close(1000)
 
             # TODO store session history in database, before removing
             del self.clients[session_id]
@@ -394,6 +441,28 @@ class WebsocketServer:
         self.clients[session_id].audio_buffer.write(data)
         self.clients[session_id].raw_audio_buffer += data
 
+    async def send_event(
+        self,
+        event: AzureGenesysEvent,
+        session_id: str,
+        message: dict[str, Any],
+        properties: dict[str, str] | None = {},
+    ):
+        """Send an JSON event to Azure Event Hub."""
+        if self.producer_client:
+            event_data_batch = await self.producer_client.create_batch()
+            event_data = EventData(json.dumps(message))
+            event_data.properties = {
+                "event-type": f"azure-genesys-audiohook.{event}",
+                "session-id": session_id,
+            }
+
+            if properties:
+                event_data.properties.update(properties)
+
+            event_data_batch.add(event_data)
+            await self.producer_client.send_batch(event_data_batch)
+
     async def recognize_speech(self, session_id: str):
         """Recognize speech from audio buffer using Azure Speech to Text."""
 
@@ -439,6 +508,17 @@ class WebsocketServer:
             """Callback that continuously logs the recognized speech."""
             self.logger.info(f"[{session_id}] Recognizing {event.result.text}")
             self.logger.debug(f"[{session_id}] Recognizing JSON: {event.result.json}")
+
+            # TODO This doesn't work
+            loop = asyncio.get_running_loop()
+            asyncio.run_coroutine_threadsafe(
+                self.send_event(
+                    event=AzureGenesysEvent.PARTIAL_TRANSCRIPT,
+                    session_id=session_id,
+                    message={"transcript": event.result.text},
+                ),
+                loop,
+            )
 
         def recognized_cb(event: speechsdk.SpeechRecognitionEventArgs):
             """Callback that logs the recognized speech once the recognition is done."""

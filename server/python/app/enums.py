@@ -2,6 +2,17 @@ from enum import StrEnum, unique
 
 
 @unique
+class AzureGenesysEvent(StrEnum):
+    """Event types that are sent to Azure Event Hub"""
+
+    SESSION_STARTED = "session_started"
+    SESSION_ENDED = "session_ended"
+    RECORDING_AVAILABLE = "recording_available"
+    TRANSCRIPT_AVAILABLE = "transcript_available"
+    PARTIAL_TRANSCRIPT = "partial_transcript"
+
+
+@unique
 class ServerMessageType(StrEnum):
     CLOSED = "closed"
     DISCONNECT = "disconnect"
