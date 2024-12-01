@@ -1,18 +1,24 @@
+import asyncio
 import dataclasses
-from quart import Quart, websocket
 import json
 import logging
 import os
+import threading
 
-from .audio import save_to_wav
+import azure.cognitiveservices.speech as speechsdk
+from azure.storage.blob import BlobServiceClient
+from quart import Quart, websocket
+
+from .audio import convert_to_wav
 from .enums import (
+    ClientMessageType,
     CloseReason,
     DisconnectReason,
-    ClientMessageType,
     ServerMessageType,
 )
+from .identity import get_azure_credential, get_speech_token
 from .models import ClientSession, HealthCheckResponse
-from datetime import datetime
+from .storage import upload_blob_file
 
 
 class WebsocketServer:
@@ -22,22 +28,53 @@ class WebsocketServer:
         str, ClientSession
     ] = {}  # TODO make app stateless, keep state in CosmosDB?
     logger: logging.Logger = logging.getLogger(__name__)
+    blob_service_client: BlobServiceClient | None = None
 
     def __init__(self):
         """Initialize the server"""
         self.app = Quart(__name__)
         self.setup_routes()
+        self.app.before_serving(self.create_connections)
+        self.app.after_serving(self.close_connections)
 
     def setup_routes(self):
         """Setup the routes for the server"""
         self.app.route("/")(self.health_check)
         self.app.websocket("/ws")(self.ws)
 
+    async def create_connections(self):
+        """Create connections before serving"""
+        if connection_string := os.getenv("AZURE_STORAGE_CONNECTION_STRING"):
+            self.blob_service_client = BlobServiceClient.from_connection_string(
+                connection_string
+            )
+        elif account_url := os.getenv("AZURE_STORAGE_ACCOUNT_URL"):
+            self.blob_service_client = BlobServiceClient(
+                account_url, credential=get_azure_credential()
+            )  # TODO cache DefaultAzureCredential
+
+    async def close_connections(self):
+        """Close connections after serving"""
+        if self.blob_service_client:
+            await self.blob_service_client.close()
+
     async def health_check(self):
         """Health check endpoint"""
-        # TODO this won't show the right amount of connected clients with multiple workers (each worker will have its own memory storage)
+        # TODO this won't show the right details when used with multiple workers (each worker will have its own memory storage)
+        # Remove audio buffer from the response to avoid serialization issues
+        connected_clients = {
+            session_id: dataclasses.replace(
+                client, audio_buffer=None, raw_audio_buffer=None
+            )
+            for session_id, client in self.clients.items()
+        }
+
         return dataclasses.asdict(
-            HealthCheckResponse(status="online", connected_clients=len(self.clients))
+            HealthCheckResponse(
+                status="online",
+                connected_clients=len(connected_clients),
+                client_sessions=connected_clients,
+            )
         )
 
     async def ws(self):
@@ -244,29 +281,46 @@ class WebsocketServer:
         parameters = message["parameters"]
         session_id = message["id"]
 
+        # Close audio buffer (and recognition) if the session is ended
+        self.clients[session_id].audio_buffer.close()
+
         if parameters["reason"] == CloseReason.END:
-            media = self.clients[session_id].media
-            timestamp = int(datetime.now().timestamp())
-            filename = f"{session_id}_{timestamp}.wav"
-
-            # Save the audio bytes to a WAV file
-            save_to_wav(
-                filename=filename,
-                format=media["format"],
-                audio_data=self.clients[session_id].audio_buffer,
-                channels=len(media["channels"]),
-                sample_width=2,
-                frame_rate=media["rate"],
-            )
-
-            self.logger.info(
-                f"[{session_id}] Audio data saved to {filename} ({media["type"]}, format {media["format"]}, rate {media["rate"]}, channels {len(media["channels"])}"
-            )
+            self.logger.info(self.clients[session_id].transcript)
 
             await self.send_message(
                 type=ServerMessageType.CLOSED, client_message=message
             )
             await websocket.close(1000)
+
+            # Save WAV file from raw audio buffer
+            # TODO retrieve raw bytes from PushAudioInputStream to avoid saving two buffers
+            wav_file = convert_to_wav(
+                format=self.clients[session_id].media["format"],
+                audio_data=self.clients[session_id].raw_audio_buffer,
+                channels=len(self.clients[session_id].media["channels"]),
+                sample_width=2,  # 16 bits per sample
+                frame_rate=self.clients[session_id].media["rate"],
+            )
+
+            # Upload the WAV file to Azure Blob Storage
+            if self.blob_service_client:
+                self.logger.debug(
+                    f"[{session_id}] Saving WAV file to Azure Blob Storage ({session_id}.wav)."
+                )
+
+                await upload_blob_file(
+                    blob_service_client=self.blob_service_client,
+                    container_name=os.getenv(
+                        "AZURE_STORAGE_ACCOUNT_CONTAINER", "audio"
+                    ),
+                    file_name=f"{session_id}.wav",
+                    data=wav_file,
+                    content_type="audio/wav",
+                )
+
+                self.logger.info(
+                    f"[{session_id}] WAV file saved to Azure Blob Storage: {session_id}.wav"
+                )
 
             # TODO store session history in database, before removing
             del self.clients[session_id]
@@ -310,17 +364,117 @@ class WebsocketServer:
 
         position=\frac{samplesProcessed}{sampleRate}
         """
-        self.logger.info(f"[{session_id}] Received audio data. Byte size: {len(data)}")
-
+        self.logger.debug(f"[{session_id}] Received audio data. Byte size: {len(data)}")
         media = self.clients[session_id].media
-        self.logger.info(
-            f"[{session_id}] type {media["type"]}, format {media["format"]}, rate {
-                media["rate"]}, channels {len(media["channels"])}"
+
+        # Initialize the audio buffer for the session
+        if self.clients[session_id].audio_buffer is None:
+            self.logger.info(
+                f"[{session_id}] type {media["type"]}, format {media["format"]}, rate {media["rate"]}, channels {len(media["channels"])}"
+            )
+
+            audio_format = speechsdk.audio.AudioStreamFormat(
+                samples_per_second=media["rate"],
+                bits_per_sample=8,
+                channels=1,
+                wave_stream_format=speechsdk.AudioStreamWaveFormat.PCM,
+            )
+
+            stream = speechsdk.audio.PushAudioInputStream(stream_format=audio_format)
+            self.clients[session_id].audio_buffer = stream
+            self.clients[session_id].raw_audio_buffer = bytearray()
+
+            # Start the speech recognition in a separate thread (background)
+            # TODO possible rewrite to https://quart.palletsprojects.com/en/latest/how_to_guides/sync_code.html
+            threading.Thread(
+                target=asyncio.run, args=(self.recognize_speech(session_id),)
+            ).start()
+
+        # Append the buffers to the audio stream
+        self.clients[session_id].audio_buffer.write(data)
+        self.clients[session_id].raw_audio_buffer += data
+
+    async def recognize_speech(self, session_id: str):
+        """Recognize speech from audio buffer using Azure Speech to Text."""
+
+        if os.getenv("AZURE_SPEECH_KEY"):
+            speech_config = speechsdk.SpeechConfig(
+                subscription=os.environ["AZURE_SPEECH_KEY"],
+                region=os.environ["AZURE_SPEECH_REGION"],
+            )
+        else:
+            speech_config = speechsdk.SpeechConfig(
+                auth_token=get_speech_token(os.environ["AZURE_SPEECH_RESOURCE_ID"]),
+                region=os.environ["AZURE_SPEECH_REGION"],
+            )
+
+        # Speech configuration
+        speech_config.output_format = speechsdk.OutputFormat.Detailed
+        speech_config.speech_recognition_language = "en-US"  # TODO add continuous LID
+        speech_config.request_word_level_timestamps()
+        speech_config.enable_audio_logging()
+        speech_config.enable_dictation()
+        speech_config.set_profanity(speechsdk.ProfanityOption.Removed)
+
+        # TODO implement conversation transcriber for mono streams
+        # speech_config.set_property(property_id=speechsdk.PropertyId.SpeechServiceResponse_DiarizeIntermediateResults, value='true')
+
+        audio_config = speechsdk.audio.AudioConfig(
+            stream=self.clients[session_id].audio_buffer
+        )
+        speech_recognizer = speechsdk.SpeechRecognizer(
+            speech_config=speech_config, audio_config=audio_config
         )
 
-        # Initialize or append to the audio buffer for the session
-        if self.clients[session_id].audio_buffer is None:
-            self.clients[session_id].audio_buffer = bytearray()
-        self.clients[session_id].audio_buffer.extend(data)
+        # Phrase list
+        phrase_list_grammar = speechsdk.PhraseListGrammar.from_recognizer(
+            speech_recognizer
+        )
+        phrase_list_grammar.addPhrase("Contoso")
 
-        # TODO implement real-time Speech to Text processing logic
+        recognition_done = threading.Event()
+
+        # Connect callbacks to the events fired by the speech recognizer
+        def recognizing_cb(event: speechsdk.SpeechRecognitionEventArgs):
+            """Callback that continuously logs the recognized speech."""
+            self.logger.info(f"[{session_id}] Recognizing {event}")
+
+        def recognized_cb(event: speechsdk.SpeechRecognitionEventArgs):
+            """Callback that logs the recognized speech once the recognition is done."""
+            self.logger.info(f"[{session_id}] Recognized {event}")
+            self.clients[session_id].transcript += event.result.text
+
+        def session_stopped_cb(event):
+            """Callback that signals to stop continuous recognition upon receiving an event."""
+            self.logger.info(f"[{session_id}] Session stopped: {event.session_id}")
+            recognition_done.set()
+
+        # Connect callbacks to the events fired by the speech recognizer
+        speech_recognizer.recognizing.connect(recognizing_cb)
+        speech_recognizer.recognized.connect(recognized_cb)
+        speech_recognizer.session_stopped.connect(session_stopped_cb)
+
+        speech_recognizer.session_started.connect(
+            lambda event: self.logger.info(
+                f"[{session_id}] Session started: {event.session_id}"
+            )
+        )
+
+        speech_recognizer.canceled.connect(
+            lambda event: self.logger.info(
+                f"[{session_id}] Canceled: {event.session_id}"
+            )
+        )
+
+        self.logger.info(f"[{session_id}] Starting continuous recognition.")
+
+        # Start continuous speech recognition
+        speech_recognizer.start_continuous_recognition()  # TODO or use _async version
+
+        # Wait until all input processed
+        recognition_done.wait()
+
+        # Stop recognition and clean up
+        speech_recognizer.stop_continuous_recognition()
+
+        self.logger.info(f"[{session_id}] Stopped continuous recognition.")

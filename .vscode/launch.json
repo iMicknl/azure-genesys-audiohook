@@ -5,26 +5,18 @@
     "version": "0.2.0",
     "configurations": [
         {
-            "name": "Python Debugger: UV (app.py)",
-            "type": "debugpy",
-            "request": "launch",
-            "module": "uv",
-            "console": "integratedTerminal",
-            "args": [
-                "run app.py"
-            ],
-            "jinja": true,
-            "autoStartBrowser": false
-        },
-        {
-            "name": "Python Debugger: Quart (app.py)",
+            "name": "Python Debugger: Quart (Launch)",
             "type": "debugpy",
             "request": "launch",
             "module": "quart",
             "env": {
-                "QUART_APP": "run:app quart run",
+                "QUART_APP": "server/python/server.py",
                 "QUART_DEBUG": "1"
             },
+            "args": [
+                "run",
+                "--no-reload"
+            ],
             "jinja": true,
             "autoStartBrowser": false
         }
