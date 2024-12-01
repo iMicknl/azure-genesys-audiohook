@@ -509,6 +509,7 @@ class WebsocketServer:
             self.logger.info(f"[{session_id}] Recognizing {event.result.text}")
             self.logger.debug(f"[{session_id}] Recognizing JSON: {event.result.json}")
 
+            # TODO This doesn't work
             loop = asyncio.get_running_loop()
             asyncio.run_coroutine_threadsafe(
                 self.send_event(
