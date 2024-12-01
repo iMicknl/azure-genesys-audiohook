@@ -437,11 +437,13 @@ class WebsocketServer:
         # Connect callbacks to the events fired by the speech recognizer
         def recognizing_cb(event: speechsdk.SpeechRecognitionEventArgs):
             """Callback that continuously logs the recognized speech."""
-            self.logger.info(f"[{session_id}] Recognizing {event}")
+            self.logger.info(f"[{session_id}] Recognizing {event.result.text}")
+            self.logger.debug(f"[{session_id}] Recognizing JSON: {event.result.json}")
 
         def recognized_cb(event: speechsdk.SpeechRecognitionEventArgs):
             """Callback that logs the recognized speech once the recognition is done."""
-            self.logger.info(f"[{session_id}] Recognized {event}")
+            self.logger.info(f"[{session_id}] Recognized {event.result.text}")
+            self.logger.debug(f"[{session_id}] Recognized JSON: {event.result.json}")
             self.clients[session_id].transcript += event.result.text
 
         def session_stopped_cb(event):
@@ -469,12 +471,12 @@ class WebsocketServer:
         self.logger.info(f"[{session_id}] Starting continuous recognition.")
 
         # Start continuous speech recognition
-        speech_recognizer.start_continuous_recognition()  # TODO or use _async version
+        speech_recognizer.start_continuous_recognition_async().get()
 
         # Wait until all input processed
         recognition_done.wait()
 
         # Stop recognition and clean up
-        speech_recognizer.stop_continuous_recognition()
+        speech_recognizer.stop_continuous_recognition_async().get()
 
         self.logger.info(f"[{session_id}] Stopped continuous recognition.")
