@@ -321,6 +321,12 @@ class WebsocketServer:
         if parameters["reason"] == CloseReason.END:
             self.logger.info(self.clients[session_id].transcript)
 
+            await self.send_event(
+                event=AzureGenesysEvent.TRANSCRIPT_AVAILABLE,
+                session_id=session_id,
+                message={"transcript": self.clients[session_id].transcript},
+            )
+
             # Save WAV file from raw audio buffer
             # TODO retrieve raw bytes from PushAudioInputStream to avoid saving two buffers
             wav_file = convert_to_wav(
@@ -503,31 +509,21 @@ class WebsocketServer:
             self.logger.info(f"[{session_id}] Recognizing {event.result.text}")
             self.logger.debug(f"[{session_id}] Recognizing JSON: {event.result.json}")
 
-            # loop = asyncio.get_running_loop()
-            # asyncio.run_coroutine_threadsafe(
-            #     self.send_event(
-            #         event="Recognizing",
-            #         session_id=session_id,
-            #         message={"text": event.result.text},
-            #     ),
-            #     loop,
-            # ).result()
+            loop = asyncio.get_running_loop()
+            asyncio.run_coroutine_threadsafe(
+                self.send_event(
+                    event=AzureGenesysEvent.PARTIAL_TRANSCRIPT,
+                    session_id=session_id,
+                    message={"transcript": event.result.text},
+                ),
+                loop,
+            )
 
         def recognized_cb(event: speechsdk.SpeechRecognitionEventArgs):
             """Callback that logs the recognized speech once the recognition is done."""
             self.logger.info(f"[{session_id}] Recognized {event.result.text}")
             self.logger.debug(f"[{session_id}] Recognized JSON: {event.result.json}")
             self.clients[session_id].transcript += event.result.text
-
-            # loop = asyncio.get_running_loop()
-            # asyncio.run_coroutine_threadsafe(
-            #     self.send_event(
-            #         event="Recognized",
-            #         session_id=session_id,
-            #         message={"text": event.result.text},
-            #     ),
-            #     loop,
-            # ).result()
 
         def session_stopped_cb(event):
             """Callback that signals to stop continuous recognition upon receiving an event."""
