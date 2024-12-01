@@ -1,7 +1,7 @@
 """Storage utilities for the server."""
 
-# from azure.storage.blob.aio import BlobServiceClient
-from azure.storage.blob import BlobServiceClient, ContentSettings
+from azure.storage.blob import ContentSettings
+from azure.storage.blob.aio import BlobServiceClient
 
 
 async def upload_blob_file(
@@ -19,9 +19,7 @@ async def upload_blob_file(
         blob=file_name,
     )
 
-    # TODO Rewrite to async version
-    # Async version dead-locks and not sure yet where the culprit is
-    blob_client.upload_blob(
+    await blob_client.upload_blob(
         data,
         blob_type="BlockBlob",
         overwrite=overwrite,
