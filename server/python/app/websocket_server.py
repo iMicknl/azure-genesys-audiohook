@@ -140,6 +140,7 @@ class WebsocketServer:
 
         # Open the websocket connection and start receiving data (messages / audio)
         while True:
+            # TODO Handle disconnection https://quart.palletsprojects.com/en/latest/how_to_guides/websockets.html#detecting-disconnection
             data = await websocket.receive()
 
             if isinstance(data, str):
