@@ -509,15 +509,14 @@ class WebsocketServer:
             self.logger.info(f"[{session_id}] Recognizing {event.result.text}")
             self.logger.debug(f"[{session_id}] Recognizing JSON: {event.result.json}")
 
-            # TODO This doesn't work
-            loop = asyncio.get_running_loop()
+            # Ensure self.send_event is called asynchronously
             asyncio.run_coroutine_threadsafe(
                 self.send_event(
                     event=AzureGenesysEvent.PARTIAL_TRANSCRIPT,
                     session_id=session_id,
                     message={"transcript": event.result.text},
                 ),
-                loop,
+                self.get_event_loop(),
             )
 
         def recognized_cb(event: speechsdk.SpeechRecognitionEventArgs):
@@ -560,3 +559,7 @@ class WebsocketServer:
         speech_recognizer.stop_continuous_recognition_async().get()
 
         self.logger.info(f"[{session_id}] Stopped continuous recognition.")
+
+    def get_event_loop(self):
+        """Return the event loop."""
+        return asyncio.get_event_loop()
