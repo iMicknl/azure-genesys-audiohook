@@ -460,6 +460,8 @@ class WebsocketServer:
             if properties:
                 event_data.properties.update(properties)
 
+            self.logger.debug("Sending event to Azure Event Hub.", event_data)
+
             event_data_batch.add(event_data)
             await self.producer_client.send_batch(event_data_batch)
 
