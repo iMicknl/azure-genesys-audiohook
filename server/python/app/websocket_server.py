@@ -3,7 +3,6 @@ import dataclasses
 import json
 import logging
 import os
-import threading
 from typing import Any
 
 import azure.cognitiveservices.speech as speechsdk
@@ -417,7 +416,7 @@ class WebsocketServer:
         # Initialize the audio buffer for the session
         if self.clients[session_id].audio_buffer is None:
             self.logger.info(
-                f"[{session_id}] type {media["type"]}, format {media["format"]}, rate {media["rate"]}, channels {len(media["channels"])}"
+                f"[{session_id}] type {media['type']}, format {media['format']}, rate {media['rate']}, channels {len(media['channels'])}"
             )
 
             audio_format = speechsdk.audio.AudioStreamFormat(
@@ -433,9 +432,7 @@ class WebsocketServer:
 
             # Start the speech recognition in a separate thread (background)
             # TODO possible rewrite to https://quart.palletsprojects.com/en/latest/how_to_guides/sync_code.html
-            threading.Thread(
-                target=asyncio.run, args=(self.recognize_speech(session_id),)
-            ).start()
+            asyncio.create_task(self.recognize_speech(session_id))
 
         # Append the buffers to the audio stream
         self.clients[session_id].audio_buffer.write(data)
@@ -477,6 +474,8 @@ class WebsocketServer:
                 region=os.environ["AZURE_SPEECH_REGION"],
             )
 
+        loop = asyncio.get_running_loop()
+
         # Speech configuration
         speech_config.output_format = speechsdk.OutputFormat.Detailed
         speech_config.speech_recognition_language = "en-US"  # TODO add continuous LID
@@ -484,6 +483,9 @@ class WebsocketServer:
         speech_config.enable_audio_logging()
         speech_config.enable_dictation()
         speech_config.set_profanity(speechsdk.ProfanityOption.Removed)
+        speech_config.set_property(
+            speechsdk.PropertyId.Speech_SegmentationStrategy, "Semantic"
+        )
 
         # TODO implement conversation transcriber for mono streams
         # speech_config.set_property(property_id=speechsdk.PropertyId.SpeechServiceResponse_DiarizeIntermediateResults, value='true')
@@ -501,7 +503,7 @@ class WebsocketServer:
         )
         phrase_list_grammar.addPhrase("Contoso")
 
-        recognition_done = threading.Event()
+        recognition_done = asyncio.Event()
 
         # Connect callbacks to the events fired by the speech recognizer
         def recognizing_cb(event: speechsdk.SpeechRecognitionEventArgs):
@@ -509,22 +511,23 @@ class WebsocketServer:
             self.logger.info(f"[{session_id}] Recognizing {event.result.text}")
             self.logger.debug(f"[{session_id}] Recognizing JSON: {event.result.json}")
 
-            # TODO This doesn't work
-            loop = asyncio.get_running_loop()
-            asyncio.run_coroutine_threadsafe(
-                self.send_event(
-                    event=AzureGenesysEvent.PARTIAL_TRANSCRIPT,
-                    session_id=session_id,
-                    message={"transcript": event.result.text},
-                ),
-                loop,
-            )
-
         def recognized_cb(event: speechsdk.SpeechRecognitionEventArgs):
             """Callback that logs the recognized speech once the recognition is done."""
             self.logger.info(f"[{session_id}] Recognized {event.result.text}")
             self.logger.debug(f"[{session_id}] Recognized JSON: {event.result.json}")
             self.clients[session_id].transcript += event.result.text
+
+            asyncio.run_coroutine_threadsafe(
+                self.send_event(
+                    event=AzureGenesysEvent.PARTIAL_TRANSCRIPT,
+                    session_id=session_id,
+                    message={
+                        "transcript": event.result.text,
+                        "data": event.result.json,
+                    },
+                ),
+                loop,
+            )
 
         def session_stopped_cb(event):
             """Callback that signals to stop continuous recognition upon receiving an event."""
@@ -532,9 +535,15 @@ class WebsocketServer:
             recognition_done.set()
 
         # Connect callbacks to the events fired by the speech recognizer
-        speech_recognizer.recognizing.connect(recognizing_cb)
-        speech_recognizer.recognized.connect(recognized_cb)
-        speech_recognizer.session_stopped.connect(session_stopped_cb)
+        speech_recognizer.recognizing.connect(
+            lambda event: loop.call_soon_threadsafe(recognizing_cb, event)
+        )
+        speech_recognizer.recognized.connect(
+            lambda event: loop.call_soon_threadsafe(recognized_cb, event)
+        )
+        speech_recognizer.session_stopped.connect(
+            lambda event: loop.call_soon_threadsafe(session_stopped_cb, event)
+        )
 
         speech_recognizer.session_started.connect(
             lambda event: self.logger.info(
@@ -553,10 +562,12 @@ class WebsocketServer:
         # Start continuous speech recognition
         speech_recognizer.start_continuous_recognition_async().get()
 
-        # Wait until all input processed
-        recognition_done.wait()
+        # Wait until all input processed without blocking the event loop
+        await recognition_done.wait()
 
-        # Stop recognition and clean up
-        speech_recognizer.stop_continuous_recognition_async().get()
+        # Stop recognition and clean up without blocking the event loop
+        await asyncio.to_thread(
+            speech_recognizer.stop_continuous_recognition_async().get
+        )
 
         self.logger.info(f"[{session_id}] Stopped continuous recognition.")
