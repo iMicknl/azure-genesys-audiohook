@@ -83,7 +83,7 @@ class WebsocketServer:
         # Remove audio buffer from the response to avoid serialization issues
         connected_clients = {
             session_id: dataclasses.replace(
-                client, audio_buffer=None, raw_audio_buffer=None
+                client, audio_buffer=None, raw_audio_buffer=None, recognize_task=None
             )
             for session_id, client in self.clients.items()
         }
@@ -138,18 +138,23 @@ class WebsocketServer:
             )
 
         # Open the websocket connection and start receiving data (messages / audio)
-        while True:
-            # TODO Handle disconnection https://quart.palletsprojects.com/en/latest/how_to_guides/websockets.html#detecting-disconnection
-            data = await websocket.receive()
+        try:
+            while True:
+                data = await websocket.receive()
 
-            if isinstance(data, str):
-                await self.handle_incoming_message(json.loads(data))
-            elif isinstance(data, bytes):
-                await self.handle_bytes(data, session_id)
-            else:
-                self.logger.debug(
-                    f"[{session_id}] Received unknown data type: {type(data)}: {data}"
-                )
+                if isinstance(data, str):
+                    await self.handle_incoming_message(json.loads(data))
+                elif isinstance(data, bytes):
+                    await self.handle_bytes(data, session_id)
+                else:
+                    self.logger.debug(
+                        f"[{session_id}] Received unknown data type: {type(data)}: {data}"
+                    )
+        except asyncio.CancelledError:
+            self.logger.warning(
+                f"[{session_id}] Websocket connection cancelled/disconnected."
+            )
+            raise
 
     async def disconnect(self, reason: DisconnectReason, message: str, code: int):
         """Disconnect the websocket connection gracefully."""
@@ -430,9 +435,10 @@ class WebsocketServer:
             self.clients[session_id].audio_buffer = stream
             self.clients[session_id].raw_audio_buffer = bytearray()
 
-            # Start the speech recognition in a separate thread (background)
-            # TODO possible rewrite to https://quart.palletsprojects.com/en/latest/how_to_guides/sync_code.html
-            asyncio.create_task(self.recognize_speech(session_id))
+            # Start the synchronous speech recognition as a asyncio task
+            self.clients[session_id].recognize_task = asyncio.create_task(
+                self.recognize_speech(session_id)
+            )
 
         # Append the buffers to the audio stream
         self.clients[session_id].audio_buffer.write(data)
@@ -475,6 +481,7 @@ class WebsocketServer:
             )
 
         loop = asyncio.get_running_loop()
+        recognition_done = asyncio.Event()
 
         # Speech configuration
         speech_config.output_format = speechsdk.OutputFormat.Detailed
@@ -502,8 +509,6 @@ class WebsocketServer:
             speech_recognizer
         )
         phrase_list_grammar.addPhrase("Contoso")
-
-        recognition_done = asyncio.Event()
 
         # Connect callbacks to the events fired by the speech recognizer
         def recognizing_cb(event: speechsdk.SpeechRecognitionEventArgs):
@@ -560,7 +565,9 @@ class WebsocketServer:
         self.logger.info(f"[{session_id}] Starting continuous recognition.")
 
         # Start continuous speech recognition
-        speech_recognizer.start_continuous_recognition_async().get()
+        await asyncio.to_thread(
+            speech_recognizer.start_continuous_recognition_async().get
+        )
 
         # Wait until all input processed without blocking the event loop
         await recognition_done.wait()
