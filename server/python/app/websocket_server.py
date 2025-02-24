@@ -347,25 +347,30 @@ class WebsocketServer:
                     f"[{session_id}] Saving WAV file to Azure Blob Storage ({session_id}.wav)."
                 )
 
-                await upload_blob_file(
-                    blob_service_client=self.blob_service_client,
-                    container_name=os.getenv(
-                        "AZURE_STORAGE_ACCOUNT_CONTAINER", "audio"
-                    ),
-                    file_name=f"{session_id}.wav",
-                    data=wav_file,
-                    content_type="audio/wav",
-                )
+                try:
+                    await upload_blob_file(
+                        blob_service_client=self.blob_service_client,
+                        container_name=os.getenv(
+                            "AZURE_STORAGE_ACCOUNT_CONTAINER", "audio"
+                        ),
+                        file_name=f"{session_id}.wav",
+                        data=wav_file,
+                        content_type="audio/wav",
+                    )
 
-                self.logger.info(
-                    f"[{session_id}] WAV file saved to Azure Blob Storage: {session_id}.wav"
-                )
+                    self.logger.info(
+                        f"[{session_id}] WAV file saved to Azure Blob Storage: {session_id}.wav"
+                    )
 
-                await self.send_event(
-                    event=AzureGenesysEvent.RECORDING_AVAILABLE,
-                    session_id=session_id,
-                    message={"filename": f"{session_id}.wav"},
-                )
+                    await self.send_event(
+                        event=AzureGenesysEvent.RECORDING_AVAILABLE,
+                        session_id=session_id,
+                        message={"filename": f"{session_id}.wav"},
+                    )
+                except Exception as e:
+                    self.logger.error(
+                        f"[{session_id}] Failed to upload WAV file to Azure Blob Storage: {e}"
+                    )
 
             await self.send_message(
                 type=ServerMessageType.CLOSED, client_message=message
