@@ -20,6 +20,9 @@ You can install the dependencies via the command below using uv.
 uv sync
 ```
 
+## Configuration
+The `.env.sample` file contains definitions that are required for setting up the server and the connection to the Azure services. Make sure  to replace the entries with your own entries. 
+
 ## Development
 
 You can start the development server via the command below. The server will start on port 5001 and listen for incoming websocket connections.
@@ -28,7 +31,7 @@ You can start the development server via the command below. The server will star
 uv run server.py
 ```
 
-During development, you can leverage the [Genesys AudioHook Sample Service](https://github.com/purecloudlabs/audiohook-reference-implementation/tree/main/client) to test the server. This client implements the Genesys AudioHook protocol and will send event and audio data to the chosen websocket server. The client can communicate with websockets over a secure connection (wss) or an insecure connection (ws). Run the command below to start the client.
+During development, you can leverage the [Genesys AudioHook Sample Service](https://github.com/purecloudlabs/audiohook-reference-implementation/tree/main/client) to test the server. This client implements the Genesys AudioHook protocol and will send event and audio data to the chosen websocket server. The client can communicate with websockets over a secure connection (wss) or an insecure connection (ws). Run the command below to start the client. (It is recommended to `npm install` from the client folder only to avoid the installation of unncessary packages that could also conflict.)
 
 ```bash
 npm start --uri ws://host.docker.internal:5001/ws --api-key your_api_key --client-secret your_secret --wavfile your_audio.wav

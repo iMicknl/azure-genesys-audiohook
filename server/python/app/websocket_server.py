@@ -4,6 +4,7 @@ import json
 import logging
 import os
 import threading
+from queue import Queue
 from typing import Any
 
 import azure.cognitiveservices.speech as speechsdk
@@ -41,6 +42,33 @@ class WebsocketServer:
         self.setup_routes()
         self.app.before_serving(self.create_connections)
         self.app.after_serving(self.close_connections)
+        self.loop = asyncio.get_event_loop()  # Store the event loop
+        self.logger.info(f"[EVENT LOOP] {self.loop}")
+        self.event_queue = Queue()  # Add an event queue"
+        # TODO. The following line is commented out because it is not working.
+        #   The event queue is not processed if we share this loop with the recognize_speech function.
+        # asyncio.ensure_future(self.process_event_queue(), loop=self.loop)
+
+        # Start the event queue processor
+        threading.Thread(target=self.start_event_queue_processor).start()
+
+    def start_event_queue_processor(self):
+        """Start the event queue processor in a new event loop."""
+        # self.loop.create_task(self.process_event_queue())
+        asyncio.run(self.process_event_queue())
+
+    async def process_event_queue(self):
+        """Process the event queue in the correct event loop."""
+        while True:
+            event_data = self.event_queue.get()
+            await self.send_event(
+                event=event_data["event"],
+                session_id=event_data["session_id"],
+                message=event_data["message"],
+            )
+            self.logger.debug(f"[process_event_queue] sending {event_data['message']}")
+            self.event_queue.task_done()
+            self.logger.debug(f"[process_event_queue] sent {event_data['message']}")
 
     def setup_routes(self):
         """Setup the routes for the server"""
@@ -68,6 +96,11 @@ class WebsocketServer:
             self.producer_client = EventHubProducerClient.from_connection_string(
                 conn_str=connection_string,
                 eventhub_name=os.environ["AZURE_EVENT_HUB_NAME"],
+            )
+        else:
+            self.logger.warning(
+                """No Azure Event Hub connection string or fully qualified namespace provided. 
+                Events will not be sent. An error will occur if an event is sent."""
             )
 
     async def close_connections(self):
@@ -433,8 +466,10 @@ class WebsocketServer:
 
             # Start the speech recognition in a separate thread (background)
             # TODO possible rewrite to https://quart.palletsprojects.com/en/latest/how_to_guides/sync_code.html
+            # TODO, Investigate if we could share the event loop between the recognize_speech and
+            # process_event_queue
             threading.Thread(
-                target=asyncio.run, args=(self.recognize_speech(session_id),)
+                target=lambda: asyncio.run(self.recognize_speech(session_id))
             ).start()
 
         # Append the buffers to the audio stream
@@ -476,7 +511,9 @@ class WebsocketServer:
                 auth_token=get_speech_token(os.environ["AZURE_SPEECH_RESOURCE_ID"]),
                 region=os.environ["AZURE_SPEECH_REGION"],
             )
-
+        # Get the current event_loop for recognizing CB
+        self.loop = asyncio.get_event_loop()
+        self.logger.debug(f"[SELF EVENT LOOP] {self.loop.__dict__}")
         # Speech configuration
         speech_config.output_format = speechsdk.OutputFormat.Detailed
         speech_config.speech_recognition_language = "en-US"  # TODO add continuous LID
@@ -509,21 +546,49 @@ class WebsocketServer:
             self.logger.info(f"[{session_id}] Recognizing {event.result.text}")
             self.logger.debug(f"[{session_id}] Recognizing JSON: {event.result.json}")
 
-            # TODO This doesn't work
-            loop = asyncio.get_running_loop()
-            asyncio.run_coroutine_threadsafe(
-                self.send_event(
-                    event=AzureGenesysEvent.PARTIAL_TRANSCRIPT,
-                    session_id=session_id,
-                    message={"transcript": event.result.text},
-                ),
-                loop,
-            )
-
         def recognized_cb(event: speechsdk.SpeechRecognitionEventArgs):
             """Callback that logs the recognized speech once the recognition is done."""
             self.logger.info(f"[{session_id}] Recognized {event.result.text}")
             self.logger.debug(f"[{session_id}] Recognized JSON: {event.result.json}")
+
+            # Everytime an utterance is recognized, put it in the queue as an event.
+            # Events will be processed in another thread that was created in the init of this class.
+            try:
+                self.event_queue.put(
+                    {
+                        "event": AzureGenesysEvent.PARTIAL_TRANSCRIPT,
+                        "session_id": session_id,
+                        "message": {"transcript": event.result.text},
+                    }
+                )
+                # future = asyncio.run_coroutine_threadsafe(
+                #     self.send_event(
+                #         event=AzureGenesysEvent.PARTIAL_TRANSCRIPT,
+                #         session_id=session_id,
+                #         message={"transcript": event.result.text},
+                #     ),
+                #     self.loop,
+                # )
+                # future.result()
+                # What if we call the async function directly, without getting the running event loop, since apparently
+                # the callback is executed in another thread. Othwerwise we can try to store the event loop and pass it to
+                # the new thread.
+                # TODO. tHIS DOESNT WORK.
+                # Try in the recognized CB if we can send the messages either using the same loop, or without loop
+                # Without loop, not all the messages are send, and with loop, only one is sent to EH
+                # asyncio.run(
+                #     self.send_event(
+                #         event=AzureGenesysEvent.PARTIAL_TRANSCRIPT,
+                #         session_id=session_id,
+                #         message={"transcript": event.result.text},
+                #     )
+                # )
+                self.logger.debug(
+                    f"Added to queue: [{session_id}] {event.result.text} and event loop: {self.loop}"
+                )
+            except Exception as e:
+                self.logger.error(f"[{session_id}] Error in recognized_cb: {e}")
+
             self.clients[session_id].transcript += event.result.text
 
         def session_stopped_cb(event):
