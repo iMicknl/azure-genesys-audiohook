@@ -5,6 +5,8 @@
 # https://containers.dev/guide/dependabot
 
 version: 2
+enable-beta-ecosystems: true
+
 updates:
  - package-ecosystem: "github-actions"
    directory: "/"
@@ -16,12 +18,12 @@ updates:
    schedule:
      interval: weekly
 
- - package-ecosystem: "pip"
-   directory: "/server/python/"
+ - package-ecosystem: "uv"
+   directory: "/server/python"
    schedule:
-     interval: weekly
+     interval: daily
 
  - package-ecosystem: "docker"
-   directory: "/server/python/"
+   directory: "/server/python"
    schedule:
-     interval: weekly
+     interval: daily
