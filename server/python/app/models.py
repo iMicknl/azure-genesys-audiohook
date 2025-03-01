@@ -1,5 +1,7 @@
-from typing import Any
+import asyncio
 from dataclasses import dataclass, field
+from typing import Any
+
 import azure.cognitiveservices.speech as speechsdk
 
 
@@ -38,6 +40,7 @@ class ClientSession:
     media: dict | None = None
     raw_audio_buffer: bytes | None = None
     audio_buffer: speechsdk.audio.PushAudioInputStream | None = None
+    recognize_task: asyncio.Task | None = None
     transcript: str = ""
 
 

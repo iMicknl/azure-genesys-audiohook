@@ -1,16 +1,22 @@
 # Genesys AudioHook Websocket Server _(work in progress)_
 
-The websocket server is written in Python using the Quart framework for asynchronous processing. It is designed to integrate with [Genesys AudioHook protocol](https://developer.genesys.cloud/devapps/audiohook) for real-time transcription and summarization. This server is designed to be deployed on Azure as a container.
+The websocket server, built with the Quart framework, integrates with the [Genesys AudioHook protocol](https://developer.genesys.cloud/devapps/audiohook) for real-time transcription. It is designed for deployment on Azure as a container, connecting to various Azure services, including Azure AI Speech for transcription, Azure Event Hub for event streaming, and Azure Blob Storage for storing audio files.
 
 > [!NOTE]
 > This application is an example implementation and is not intended for production use. It is provided as-is and is not supported.
 
 ## Prerequisites
 
+The easiest way to get started is by using the included DevContainer configuration. This setup will install all necessary dependencies and tools automatically.
+
 - Python 3.12
 - [uv](https://docs.astral.sh/uv/getting-started/installation/)
 
-Easiest is to leverage the included DevContainer configuration to get started. This will install all the necessary dependencies and tools to get started.
+### Azure resources
+
+- Azure Event Hub
+- Azure Blob Storage
+- Azure AI Speech
 
 ## Installation
 
@@ -22,17 +28,19 @@ uv sync
 
 ## Development
 
-You can start the development server via the command below. The server will start on port 5001 and listen for incoming websocket connections.
+Start the development server with the command below. It will run on port 5001, listening for websocket connections. The server will automatically restart on code changes.
 
 ```bash
 uv run server.py
 ```
 
-During development, you can leverage the [Genesys AudioHook Sample Service](https://github.com/purecloudlabs/audiohook-reference-implementation/tree/main/client) to test the server. This client implements the Genesys AudioHook protocol and will send event and audio data to the chosen websocket server. The client can communicate with websockets over a secure connection (wss) or an insecure connection (ws). Run the command below to start the client.
+During development, you can use the [Genesys AudioHook Sample Service](https://github.com/purecloudlabs/audiohook-reference-implementation/tree/main/client) to test the server. This client implements the Genesys AudioHook protocol and sends event and audio data to the websocket server. It supports both secure (wss) and insecure (ws) connections. Run the command below to start the client, ensuring the API key and secret match your environment variables.
 
 ```bash
 npm start --uri ws://host.docker.internal:5001/ws --api-key your_api_key --client-secret your_secret --wavfile your_audio.wav
 ```
+
+To perform a load test on your websocket server, use the `--session-count` parameter to set the number of concurrent sessions.
 
 ### Tests
 
