@@ -154,6 +154,7 @@ class WebsocketServer:
             self.logger.warning(
                 f"[{session_id}] Websocket connection cancelled/disconnected."
             )
+            # TODO should we delete self.clients[session_id]?
             raise
 
     async def disconnect(self, reason: DisconnectReason, message: str, code: int):
