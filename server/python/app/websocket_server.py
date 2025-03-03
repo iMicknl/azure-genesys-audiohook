@@ -19,95 +19,10 @@ from .enums import (
     DisconnectReason,
     ServerMessageType,
 )
+from .event_processor import EventProcessor
 from .identity import get_azure_credential_async, get_speech_token
 from .models import ClientSession, HealthCheckResponse
 from .storage import upload_blob_file
-
-
-class EventBatch:
-    """Class to manage event batching for Azure Event Hub"""
-
-    logger: logging.Logger = logging.getLogger(__name__)
-
-    def __init__(
-        self,
-        producer_client: EventHubProducerClient | None,
-        batch_interval: float = 0.5,
-    ):
-        self.producer_client = producer_client
-        self.batch_interval = batch_interval  # seconds
-        self.event_queue: list[EventData] = []
-        self.lock = asyncio.Lock()
-        self.batch_task = None
-        self.running = False
-
-    async def start(self):
-        """Start the batch processing task"""
-        if not self.running:
-            self.running = True
-            self.batch_task = asyncio.create_task(self._process_batch())
-
-    async def stop(self):
-        """Stop the batch processing task and send any remaining events"""
-        if self.running:
-            self.running = False
-            if self.batch_task:
-                await self.batch_task
-            # Send any remaining events
-            await self._send_batch()
-
-    async def add_event(self, event_data: EventData):
-        """Add an event to the queue"""
-        async with self.lock:
-            self.event_queue.append(event_data)
-
-    async def _process_batch(self):
-        """Process batches at regular intervals"""
-        while self.running:
-            await asyncio.sleep(self.batch_interval)
-            await self._send_batch()
-
-    async def _send_batch(self):
-        """Send the current batch of events"""
-        if not self.producer_client or not self.event_queue:
-            return
-
-        async with self.lock:
-            if not self.event_queue:  # Check again after acquiring lock
-                return
-
-            try:
-                event_data_batch = await self.producer_client.create_batch()
-                events_to_send = []
-                events_not_sent = []
-
-                # Add events to batch until full
-                for event in self.event_queue:
-                    if event_data_batch.add(event):
-                        events_to_send.append(event)
-                    else:
-                        # Batch is full, send it and create a new one
-                        await self.producer_client.send_batch(event_data_batch)
-                        event_data_batch = await self.producer_client.create_batch()
-                        if event_data_batch.add(
-                            event
-                        ):  # Try to add the event to the new batch
-                            events_to_send.append(event)
-                        else:
-                            # If still can't add to new batch, keep for next cycle
-                            events_not_sent.append(event)
-
-                # Send the final batch if it has events
-                if len(event_data_batch) > 0:
-                    await self.producer_client.send_batch(event_data_batch)
-
-                # Replace the queue with only events that weren't sent
-                # This is more reliable than removing items one by one
-                self.event_queue = events_not_sent
-
-            except Exception as e:
-                # Log the error but don't remove events from queue so they can be retried
-                print(f"Error sending event batch: {e}")
 
 
 class WebsocketServer:
@@ -119,7 +34,7 @@ class WebsocketServer:
     logger: logging.Logger = logging.getLogger(__name__)
     blob_service_client: BlobServiceClient | None = None
     producer_client: EventHubProducerClient | None = None
-    event_batcher: EventBatch | None = None
+    event_batcher: EventProcessor | None = None
 
     def __init__(self):
         """Initialize the server"""
@@ -158,7 +73,7 @@ class WebsocketServer:
             )
 
         # Initialize event batcher after producer client is created
-        self.event_batcher = EventBatch(self.producer_client)
+        self.event_batcher = EventProcessor(self.producer_client)
         await self.event_batcher.start()
 
     async def close_connections(self):
