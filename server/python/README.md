@@ -34,7 +34,33 @@ uv run server.py
 During development, you can leverage the [Genesys AudioHook Sample Service](https://github.com/purecloudlabs/audiohook-reference-implementation/tree/main/client) to test the server. This client implements the Genesys AudioHook protocol and will send event and audio data to the chosen websocket server. The client can communicate with websockets over a secure connection (wss) or an insecure connection (ws). Run the command below to start the client. (It is recommended to `npm install` from the client folder only to avoid the installation of unncessary packages that could also conflict.)
 
 ```bash
-npm start --uri ws://host.docker.internal:5001/ws --api-key your_api_key --client-secret your_secret --wavfile your_audio.wav
+cd client
+npm install
+```
+If you are using devcontainers, and your service is being served in localhost, make sure that you firewall rules for WSL are correctly setup (in your Windows Host):
+```
+sudo New-NetFirewallRule -DisplayName "WSL" -Direction Inbound  -InterfaceAlias "vEthernet (WSL (Hyper-V firewall))"  -Action Allow
+sudo New-NetFirewallRule -DisplayName "Allow Port 5000" -Direction Inbound -LocalPort 5000 -Protocol TCP -Action Allow
+```
+Also, if you are using WSL, which would be your case if you are using devcontainers in windows, make sure to mirror your networking in wsl by creating a ~/.wslconfig with the following (in your Windows home location):
+
+```
+[wsl2]
+networkingMode=mirrored
+```
+
+Then you can start your client: 
+```bash
+npm start --uri ws://host.docker.internal:5000/ws --api-key your_api_key --client-secret your_secret --wavfile your_audio.wav
+
+OR 
+npm start -- --uri ws://localhost:5000/ws --api-key your_api_key --client-secret  your_secret --wavfile output_8k-stereo.wav
+```
+
+Example:
+```bash
+cd client
+npm start -- --uri wss://audiohook.example.com/api/v1/audiohook/ws --api-key SGVsbG8sIEkgYW0gdGhlIEFQSSBrZXkh --client-secret TXlTdXBlclNlY3JldEtleVRlbGxOby0xITJAMyM0JDU= --wavfile output_8k-stereo.wav
 ```
 
 ### Tests
