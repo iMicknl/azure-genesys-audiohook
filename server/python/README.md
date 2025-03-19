@@ -57,13 +57,7 @@ Then you can start your client:
 npm start --uri ws://host.docker.internal:5000/ws --api-key your_api_key --client-secret your_secret --wavfile your_audio.wav
 
 OR 
-npm start -- --uri ws://localhost:5000/ws --api-key your_api_key --client-secret  your_secret --wavfile output_8k-stereo.wav
-```
-
-Example:
-```bash
-cd client
-npm start -- --uri wss://audiohook.example.com/api/v1/audiohook/ws --api-key SGVsbG8sIEkgYW0gdGhlIEFQSSBrZXkh --client-secret TXlTdXBlclNlY3JldEtleVRlbGxOby0xITJAMyM0JDU= --wavfile output_8k-stereo.wav
+npm start -- --uri ws://localhost:5000/ws --api-key your_api_key --client-secret  your_secret --wavfile your_audio.wav
 ```
 
 To perform a load test on your websocket server, use the `--session-count` parameter to set the number of concurrent sessions.
