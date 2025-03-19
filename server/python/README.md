@@ -40,7 +40,7 @@ During development, you can use the [Genesys AudioHook Sample Service](https://g
 cd client
 npm install
 ```
-If you are using devcontainers, and your service is being served in localhost, make sure that you firewall rules for WSL are correctly setup (in your Windows Host):
+If you are deploying this repo using a container (devcontainers), and your service is being served in localhost, and you want to run the Genesys client in your the host OS, make sure that you firewall rules for WSL are correctly setup (in your Windows Host):
 ```
 sudo New-NetFirewallRule -DisplayName "WSL" -Direction Inbound  -InterfaceAlias "vEthernet (WSL (Hyper-V firewall))"  -Action Allow
 sudo New-NetFirewallRule -DisplayName "Allow Port 5000" -Direction Inbound -LocalPort 5000 -Protocol TCP -Action Allow
