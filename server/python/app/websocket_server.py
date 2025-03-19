@@ -61,14 +61,21 @@ class WebsocketServer:
         """Process the event queue in the correct event loop."""
         while True:
             event_data = self.event_queue.get()
+            session_id = event_data["session_id"]
+            conversation_id = self.clients[session_id].conversation_id
+
+            message = event_data["message"]
+            message["conversation-id"] = conversation_id
+
             await self.send_event(
                 event=event_data["event"],
                 session_id=event_data["session_id"],
-                message=event_data["message"],
+                message=message,
+                conversation_id=conversation_id,
             )
-            self.logger.debug(f"[process_event_queue] sending {event_data['message']}")
+            self.logger.debug(f"[process_event_queue] sending {message}")
             self.event_queue.task_done()
-            self.logger.debug(f"[process_event_queue] sent {event_data['message']}")
+            self.logger.debug(f"[process_event_queue] sent {message}")
 
     def setup_routes(self):
         """Setup the routes for the server"""
@@ -333,6 +340,7 @@ class WebsocketServer:
                 "position": position,
             },
             properties={},
+            conversation_id=conversation_id,
         )
 
     async def handle_update_message(self, message: dict):
@@ -353,11 +361,13 @@ class WebsocketServer:
 
         if parameters["reason"] == CloseReason.END:
             self.logger.info(self.clients[session_id].transcript)
+            conversation_id = self.clients[session_id].conversation_id
 
             await self.send_event(
                 event=AzureGenesysEvent.TRANSCRIPT_AVAILABLE,
                 session_id=session_id,
                 message={"transcript": self.clients[session_id].transcript},
+                conversation_id=conversation_id,
             )
 
             # Save WAV file from raw audio buffer
@@ -394,6 +404,7 @@ class WebsocketServer:
                     event=AzureGenesysEvent.RECORDING_AVAILABLE,
                     session_id=session_id,
                     message={"filename": f"{session_id}.wav"},
+                    conversation_id=conversation_id,
                 )
 
             await self.send_message(
@@ -482,6 +493,7 @@ class WebsocketServer:
         session_id: str,
         message: dict[str, Any],
         properties: dict[str, str] | None = {},
+        conversation_id: str = "",
     ):
         """Send an JSON event to Azure Event Hub."""
         if self.producer_client:
@@ -490,6 +502,7 @@ class WebsocketServer:
             event_data.properties = {
                 "event-type": f"azure-genesys-audiohook.{event}",
                 "session-id": session_id,
+                "conversation-id": conversation_id,
             }
 
             if properties:
