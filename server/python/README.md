@@ -40,10 +40,10 @@ During development, you can use the [Genesys AudioHook Sample Service](https://g
 cd client
 npm install
 ```
-If you are deploying this repo using a container (devcontainers), and your service is being served in localhost, and you want to run the Genesys client in your the host OS, make sure that you firewall rules for WSL are correctly setup (in your Windows Host):
+If you are deploying this repo using a container (devcontainers), and your service is being served in localhost, and you want to run the Genesys client in the host OS, make sure that you firewall rules for WSL are correctly setup (in your Windows Host). Run the following commands in PowerSheel as an administrator:
 ```
-sudo New-NetFirewallRule -DisplayName "WSL" -Direction Inbound  -InterfaceAlias "vEthernet (WSL (Hyper-V firewall))"  -Action Allow
-sudo New-NetFirewallRule -DisplayName "Allow Port 5000" -Direction Inbound -LocalPort 5000 -Protocol TCP -Action Allow
+New-NetFirewallRule -DisplayName "WSL" -Direction Inbound  -InterfaceAlias "vEthernet (WSL (Hyper-V firewall))"  -Action Allow
+New-NetFirewallRule -DisplayName "Allow Port 5000" -Direction Inbound -LocalPort 5000 -Protocol TCP -Action Allow
 ```
 Also, if you are using WSL, which would be your case if you are using devcontainers in windows, make sure to mirror your networking in wsl by creating a ~/.wslconfig with the following (in your Windows home location):
 
@@ -52,11 +52,11 @@ Also, if you are using WSL, which would be your case if you are using devcontain
 networkingMode=mirrored
 ```
 
-Then you can start your client: 
+Then you can start your client:
 ```bash
 npm start --uri ws://host.docker.internal:5000/ws --api-key your_api_key --client-secret your_secret --wavfile your_audio.wav
 
-OR 
+OR
 npm start -- --uri ws://localhost:5000/ws --api-key your_api_key --client-secret  your_secret --wavfile your_audio.wav
 ```
 
