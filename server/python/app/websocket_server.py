@@ -157,8 +157,6 @@ class WebsocketServer:
                 code=3000,
             )
 
-        self.logger.debug("opening websocket")
-
         # Open the websocket connection and start receiving data (messages / audio)
         try:
             while True:
@@ -371,13 +369,14 @@ class WebsocketServer:
 
                 # Save WAV file from raw audio buffer
                 # TODO retrieve raw bytes from PushAudioInputStream to avoid saving two buffers
-                wav_file = convert_to_wav(
-                    format=self.clients[session_id].media["format"],
-                    audio_data=self.clients[session_id].raw_audio_buffer,
-                    channels=len(self.clients[session_id].media["channels"]),
-                    sample_width=2,  # 16 bits per sample
-                    frame_rate=self.clients[session_id].media["rate"],
-                )
+                if self.clients[session_id].raw_audio_buffer:
+                    wav_file = convert_to_wav(
+                        format=self.clients[session_id].media["format"],
+                        audio_data=self.clients[session_id].raw_audio_buffer,
+                        channels=len(self.clients[session_id].media["channels"]),
+                        sample_width=2,  # 16 bits per sample
+                        frame_rate=self.clients[session_id].media["rate"],
+                    )
 
                 # Upload the WAV file to Azure Blob Storage
                 if self.blob_service_client:
