@@ -41,7 +41,7 @@ class ClientSession:
     raw_audio_buffer: bytes | None = None
     audio_buffer: speechsdk.audio.PushAudioInputStream | None = None
     recognize_task: asyncio.Task | None = None
-    transcript: str = ""
+    transcript: list[dict] = field(default_factory=list)
 
 
 @dataclass(kw_only=True)
