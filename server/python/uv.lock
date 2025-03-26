@@ -174,6 +174,23 @@ wheels = [
 ]
 
 [[package]]
+name = "azure-eventhub-checkpointstoreblob-aio"
+version = "1.2.0"
+source = { registry = "https://pypi.org/simple" }
+dependencies = [
+    { name = "aiohttp" },
+    { name = "azure-core" },
+    { name = "azure-eventhub" },
+    { name = "cryptography" },
+    { name = "isodate" },
+    { name = "typing-extensions" },
+]
+sdist = { url = "https://files.pythonhosted.org/packages/6d/2a/bde3f0eaded75791a4cb2822d7107077d51c0f076afff95bcdd56764bec0/azure_eventhub_checkpointstoreblob_aio-1.2.0.tar.gz", hash = "sha256:d61d5e425c1a59bbe042ce287de072386e73a3b19ea21f8a7ac04d2a54c7c12b", size = 356719 }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/8c/6d/c717c7cf917dad0db2dc43489ea668f3dfb5215d6dd32a47d614bf454939/azure_eventhub_checkpointstoreblob_aio-1.2.0-py3-none-any.whl", hash = "sha256:c59d76c1b6f92b7781b823bb4c3254b099b9f6313bb9cddd432a1c2241b446f0", size = 419721 },
+]
+
+[[package]]
 name = "azure-identity"
 version = "1.20.0"
 source = { registry = "https://pypi.org/simple" }
@@ -437,6 +454,7 @@ dependencies = [
     { name = "audioop-lts", marker = "python_full_version >= '3.13'" },
     { name = "azure-cognitiveservices-speech" },
     { name = "azure-eventhub" },
+    { name = "azure-eventhub-checkpointstoreblob-aio" },
     { name = "azure-identity" },
     { name = "azure-storage-blob" },
     { name = "gunicorn" },
@@ -460,6 +478,7 @@ requires-dist = [
     { name = "audioop-lts", marker = "python_full_version >= '3.13'" },
     { name = "azure-cognitiveservices-speech", specifier = ">=1.40.0" },
     { name = "azure-eventhub", specifier = ">=5.13.0" },
+    { name = "azure-eventhub-checkpointstoreblob-aio", specifier = ">=1.2.0" },
     { name = "azure-identity", specifier = ">=1.19.0" },
     { name = "azure-storage-blob", specifier = ">=12.24.0" },
     { name = "gunicorn", specifier = ">=23.0.0" },

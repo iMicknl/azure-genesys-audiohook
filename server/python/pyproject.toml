@@ -16,6 +16,7 @@ dependencies = [
     "uvicorn>=0.30.6",
     "audioop-lts; python_version>='3.13'",
     "azure-eventhub>=5.13.0",
+    "azure-eventhub-checkpointstoreblob-aio>=1.2.0",
 ]
 
 [tool.uv]
