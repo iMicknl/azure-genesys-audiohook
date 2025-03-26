@@ -44,6 +44,7 @@ class WebsocketServer:
     def setup_routes(self):
         """Setup the routes for the server"""
         self.app.route("/")(self.health_check)
+        self.app.route("/conversation/<conversation_id>")(self.get_conversation)
         self.app.websocket("/ws")(self.ws)
 
     async def create_connections(self):
@@ -95,6 +96,23 @@ class WebsocketServer:
                 client_sessions=connected_clients,
             )
         )
+
+    async def get_conversation(self, conversation_id):
+        """Get client session by conversation ID"""
+        # Look for client session with matching conversation_id
+        for session_id, client in self.clients.items():
+            if getattr(client, "conversation_id", None) == conversation_id:
+                # Return a single session object without audio buffers and tasks
+                clean_session = dataclasses.replace(
+                    client,
+                    audio_buffer=None,
+                    raw_audio_buffer=None,
+                    recognize_task=None,
+                )
+                return dataclasses.asdict(clean_session), 200
+
+        # Return 404 if no matching session is found
+        return {"error": "Conversation not found"}, 404
 
     async def ws(self):
         """Websocket endpoint"""
