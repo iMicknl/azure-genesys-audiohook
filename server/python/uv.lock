@@ -177,7 +177,7 @@ wheels = [
 
 [[package]]
 name = "azure-identity"
-version = "1.20.0"
+version = "1.21.0"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
     { name = "azure-core" },
@@ -186,9 +186,9 @@ dependencies = [
     { name = "msal-extensions" },
     { name = "typing-extensions" },
 ]
-sdist = { url = "https://files.pythonhosted.org/packages/ee/89/7d170fab0b85d9650cdb7abda087e849644beb52bd28f6804620dd0cecd9/azure_identity-1.20.0.tar.gz", hash = "sha256:40597210d56c83e15031b0fe2ea3b26420189e1e7f3e20bdbb292315da1ba014", size = 264447 }
+sdist = { url = "https://files.pythonhosted.org/packages/b5/a1/f1a683672e7a88ea0e3119f57b6c7843ed52650fdcac8bfa66ed84e86e40/azure_identity-1.21.0.tar.gz", hash = "sha256:ea22ce6e6b0f429bc1b8d9212d5b9f9877bd4c82f1724bfa910760612c07a9a6", size = 266445 }
 wheels = [
-    { url = "https://files.pythonhosted.org/packages/de/aa/819513c1dbef990af690bb5eefb5e337f8698d75dfdb7302528f50ce1994/azure_identity-1.20.0-py3-none-any.whl", hash = "sha256:5f23fc4889a66330e840bd78830287e14f3761820fe3c5f77ac875edcb9ec998", size = 188243 },
+    { url = "https://files.pythonhosted.org/packages/3d/9f/1f9f3ef4f49729ee207a712a5971a9ca747f2ca47d9cbf13cf6953e3478a/azure_identity-1.21.0-py3-none-any.whl", hash = "sha256:258ea6325537352440f71b35c3dffe9d240eae4a5126c1b7ce5efd5766bd9fd9", size = 189190 },
 ]
 
 [[package]]
@@ -462,10 +462,10 @@ requires-dist = [
     { name = "audioop-lts", marker = "python_full_version >= '3.13'" },
     { name = "azure-cognitiveservices-speech", specifier = "==1.43.0" },
     { name = "azure-eventhub", specifier = "==5.14.0" },
-    { name = "azure-identity", specifier = "==1.20.0" },
+    { name = "azure-identity", specifier = ">=1.19.0" },
     { name = "azure-storage-blob", specifier = "==12.24.1" },
     { name = "gunicorn", specifier = "==23.0.0" },
-    { name = "numpy", specifier = ">=2.1.1" },
+    { name = "numpy", specifier = "==2.2.4" },
     { name = "python-dotenv", specifier = "==1.1.0" },
     { name = "quart", specifier = "==0.20.0" },
     { name = "uvicorn", specifier = "==0.34.0" },
