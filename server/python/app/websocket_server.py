@@ -472,18 +472,34 @@ class WebsocketServer:
             event_data_batch.add(event_data)
             await self.producer_client.send_batch(event_data_batch)
 
+            self.logger.debug(f"[{session_id}] Sending event: {event_data}")
+
     async def recognize_speech(self, session_id: str):
         """Recognize speech from audio buffer using Azure Speech to Text."""
 
-        if os.getenv("AZURE_SPEECH_KEY"):
+        # Determine speech configuration based on channel count and authentication method
+        # Use multichannel (preview) for stereo calls
+        is_multichannel = len(self.clients[session_id].media["channels"]) > 1
+        region = os.environ["AZURE_SPEECH_REGION"]
+        endpoint = (
+            f"wss://{region}.stt.speech.microsoft.com/speech/recognition/conversation/cognitiveservices/v1?setfeature=multichannel2"
+            if is_multichannel
+            else None
+        )
+
+        # Create speech config with appropriate authentication (speech key vs managed identity)
+        if speech_key := os.getenv("AZURE_SPEECH_KEY"):
             speech_config = speechsdk.SpeechConfig(
-                subscription=os.environ["AZURE_SPEECH_KEY"],
-                region=os.environ["AZURE_SPEECH_REGION"],
+                subscription=speech_key,
+                region=None if is_multichannel else region,
+                endpoint=endpoint,
             )
         else:
+            auth_token = get_speech_token(os.environ["AZURE_SPEECH_RESOURCE_ID"])
             speech_config = speechsdk.SpeechConfig(
-                auth_token=get_speech_token(os.environ["AZURE_SPEECH_RESOURCE_ID"]),
-                region=os.environ["AZURE_SPEECH_REGION"],
+                auth_token=auth_token,
+                region=None if is_multichannel else region,
+                endpoint=endpoint,
             )
 
         loop = asyncio.get_running_loop()
@@ -496,12 +512,11 @@ class WebsocketServer:
         speech_config.enable_audio_logging()
         speech_config.enable_dictation()
         speech_config.set_profanity(speechsdk.ProfanityOption.Removed)
+
+        # Preview: only supported for en-us
         speech_config.set_property(
             speechsdk.PropertyId.Speech_SegmentationStrategy, "Semantic"
         )
-
-        # TODO implement conversation transcriber for mono streams
-        # speech_config.set_property(property_id=speechsdk.PropertyId.SpeechServiceResponse_DiarizeIntermediateResults, value='true')
 
         audio_config = speechsdk.audio.AudioConfig(
             stream=self.clients[session_id].audio_buffer
@@ -519,28 +534,38 @@ class WebsocketServer:
         # Connect callbacks to the events fired by the speech recognizer
         def recognizing_cb(event: speechsdk.SpeechRecognitionEventArgs):
             """Callback that continuously logs the recognized speech."""
-            self.logger.info(f"[{session_id}] Recognizing {event.result.text}")
+            self.logger.info(f"[{session_id}] Recognizing: {event.result.text}")
             self.logger.debug(f"[{session_id}] Recognizing JSON: {event.result.json}")
 
         def recognized_cb(event: speechsdk.SpeechRecognitionEventArgs):
             """Callback that logs the recognized speech once the recognition is done."""
-            self.logger.info(f"[{session_id}] Recognized {event.result.text}")
+            self.logger.info(f"[{session_id}] Recognized: {event.result.text}")
             self.logger.debug(f"[{session_id}] Recognized JSON: {event.result.json}")
-            self.clients[session_id].transcript += event.result.text
+            json_data = json.loads(event.result.json)
 
+            # Store transcript in local memory
+            self.clients[session_id].transcript.append(
+                {
+                    "channel": json_data["Channel"] if is_multichannel else None,
+                    "text": event.result.text,
+                }
+            )
+
+            # Send transcript to Event Hub
             asyncio.run_coroutine_threadsafe(
                 self.send_event(
                     event=AzureGenesysEvent.PARTIAL_TRANSCRIPT,
                     session_id=session_id,
                     message={
                         "transcript": event.result.text,
-                        "data": event.result.json,
+                        "channel": json_data["Channel"] if is_multichannel else None,
+                        "data": json_data,
                     },
                 ),
                 loop,
             )
 
-        def session_stopped_cb(event):
+        def session_stopped_cb(event: speechsdk.SpeechRecognitionCanceledEventArgs):
             """Callback that signals to stop continuous recognition upon receiving an event."""
             self.logger.info(f"[{session_id}] Session stopped: {event.session_id}")
             recognition_done.set()
