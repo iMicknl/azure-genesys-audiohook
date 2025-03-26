@@ -16,7 +16,7 @@ updates:
    schedule:
      interval: weekly
 
- - package-ecosystem: "pip"
+ - package-ecosystem: "uv"
    directory: "/server/python/"
    schedule:
      interval: weekly
