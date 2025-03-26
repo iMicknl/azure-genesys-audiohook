@@ -118,6 +118,8 @@ class WebsocketServer:
                 code=1008,
             )
 
+        self.logger.debug(headers)
+
         # Save new client in memory storage
         self.clients[session_id] = ClientSession()
 
@@ -137,12 +139,15 @@ class WebsocketServer:
                 code=3000,
             )
 
+        self.logger.debug("opening websocket")
+
         # Open the websocket connection and start receiving data (messages / audio)
         try:
             while True:
                 data = await websocket.receive()
 
                 if isinstance(data, str):
+                    self.logger.debug(f"RECEIVING {data}")
                     await self.handle_incoming_message(json.loads(data))
                 elif isinstance(data, bytes):
                     await self.handle_bytes(data, session_id)
@@ -172,23 +177,31 @@ class WebsocketServer:
         return await websocket.close(code)
 
     async def send_message(
-        self, type: ServerMessageType, client_message: dict, parameters: dict = {}
+        self,
+        type: ServerMessageType,
+        client_message: dict,
+        parameters: dict = {},
+        position: str | None = None,
     ):
         """Send a message to the client."""
         session_id = client_message["id"]
         self.clients[session_id].server_seq += 1
 
-        self.logger.info(f"[{session_id}] Server sending message with type {type}")
-        await websocket.send_json(
-            {
-                "version": "2",
-                "type": type,
-                "seq": self.clients[session_id].server_seq,
-                "clientseq": client_message["seq"],
-                "id": session_id,
-                "parameters": parameters,
-            }
-        )
+        server_message = {
+            "version": "2",
+            "type": str(type),
+            "seq": self.clients[session_id].server_seq,
+            "clientseq": client_message["seq"],
+            "id": session_id,
+            "parameters": parameters,
+        }
+
+        if position:
+            server_message["position"] = position
+
+        self.logger.info(f"[{session_id}] Server sending message with type {type}.")
+        self.logger.debug(server_message)
+        await websocket.send_json(server_message)
 
     async def handle_incoming_message(self, message: dict):
         """Handle incoming messages (JSON)."""
@@ -259,7 +272,7 @@ class WebsocketServer:
         # Handle connection probe
         # See https://developer.genesys.cloud/devapps/audiohook/patterns-and-practices#connection-probe
         if conversation_id == "00000000-0000-0000-0000-000000000000":
-            self.handle_connection_probe(message)
+            await self.handle_connection_probe(message)
             return
 
         self.logger.info(
@@ -321,57 +334,61 @@ class WebsocketServer:
         session_id = message["id"]
 
         # Close audio buffer (and recognition) if the session is ended
-        self.clients[session_id].audio_buffer.close()
+        if self.clients[session_id].audio_buffer:
+            self.clients[session_id].audio_buffer.close()
 
-        if parameters["reason"] == CloseReason.END:
-            self.logger.info(self.clients[session_id].transcript)
+        if (
+            parameters["reason"] == CloseReason.END
+        ):  # TODO Fix check for connection probe
+            if self.clients[session_id].media:
+                self.logger.info(self.clients[session_id].transcript)
 
-            await self.send_event(
-                event=AzureGenesysEvent.TRANSCRIPT_AVAILABLE,
-                session_id=session_id,
-                message={"transcript": self.clients[session_id].transcript},
-            )
-
-            # Save WAV file from raw audio buffer
-            # TODO retrieve raw bytes from PushAudioInputStream to avoid saving two buffers
-            wav_file = convert_to_wav(
-                format=self.clients[session_id].media["format"],
-                audio_data=self.clients[session_id].raw_audio_buffer,
-                channels=len(self.clients[session_id].media["channels"]),
-                sample_width=2,  # 16 bits per sample
-                frame_rate=self.clients[session_id].media["rate"],
-            )
-
-            # Upload the WAV file to Azure Blob Storage
-            if self.blob_service_client:
-                self.logger.debug(
-                    f"[{session_id}] Saving WAV file to Azure Blob Storage ({session_id}.wav)."
+                await self.send_event(
+                    event=AzureGenesysEvent.TRANSCRIPT_AVAILABLE,
+                    session_id=session_id,
+                    message={"transcript": self.clients[session_id].transcript},
                 )
 
-                try:
-                    await upload_blob_file(
-                        blob_service_client=self.blob_service_client,
-                        container_name=os.getenv(
-                            "AZURE_STORAGE_ACCOUNT_CONTAINER", "audio"
-                        ),
-                        file_name=f"{session_id}.wav",
-                        data=wav_file,
-                        content_type="audio/wav",
+                # Save WAV file from raw audio buffer
+                # TODO retrieve raw bytes from PushAudioInputStream to avoid saving two buffers
+                wav_file = convert_to_wav(
+                    format=self.clients[session_id].media["format"],
+                    audio_data=self.clients[session_id].raw_audio_buffer,
+                    channels=len(self.clients[session_id].media["channels"]),
+                    sample_width=2,  # 16 bits per sample
+                    frame_rate=self.clients[session_id].media["rate"],
+                )
+
+                # Upload the WAV file to Azure Blob Storage
+                if self.blob_service_client:
+                    self.logger.debug(
+                        f"[{session_id}] Saving WAV file to Azure Blob Storage ({session_id}.wav)."
                     )
 
-                    self.logger.info(
-                        f"[{session_id}] WAV file saved to Azure Blob Storage: {session_id}.wav"
-                    )
+                    try:
+                        await upload_blob_file(
+                            blob_service_client=self.blob_service_client,
+                            container_name=os.getenv(
+                                "AZURE_STORAGE_ACCOUNT_CONTAINER", "audio"
+                            ),
+                            file_name=f"{session_id}.wav",
+                            data=wav_file,
+                            content_type="audio/wav",
+                        )
 
-                    await self.send_event(
-                        event=AzureGenesysEvent.RECORDING_AVAILABLE,
-                        session_id=session_id,
-                        message={"filename": f"{session_id}.wav"},
-                    )
-                except Exception as e:
-                    self.logger.error(
-                        f"[{session_id}] Failed to upload WAV file to Azure Blob Storage: {e}"
-                    )
+                        self.logger.info(
+                            f"[{session_id}] WAV file saved to Azure Blob Storage: {session_id}.wav"
+                        )
+
+                        await self.send_event(
+                            event=AzureGenesysEvent.RECORDING_AVAILABLE,
+                            session_id=session_id,
+                            message={"filename": f"{session_id}.wav"},
+                        )
+                    except Exception as e:
+                        self.logger.error(
+                            f"[{session_id}] Failed to upload WAV file to Azure Blob Storage: {e}"
+                        )
 
             await self.send_message(
                 type=ServerMessageType.CLOSED, client_message=message
@@ -390,6 +407,7 @@ class WebsocketServer:
         This connection probe and synthetic session helps flagging integration configuration issues and verify minimal server compliance without needing manual test calls.
         """
         session_id = message["id"]
+
         self.logger.info(
             f"[{session_id}] Connection probe. Conversation should not be logged and transcribed."
         )
@@ -400,14 +418,6 @@ class WebsocketServer:
             parameters={
                 "startPaused": False,
                 "media": [],
-            },
-        )
-
-        await self.send_message(
-            type=ClientMessageType.CLOSE,
-            client_message=message,
-            parameters={
-                "reason": CloseReason.END,
             },
         )
 
