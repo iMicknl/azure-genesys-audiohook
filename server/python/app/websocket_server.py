@@ -380,7 +380,7 @@ class WebsocketServer:
             await websocket.close(1000)
 
             # TODO store session history in database, before removing
-            del self.clients[session_id]
+            # del self.clients[session_id]
 
     async def handle_connection_probe(self, message: dict):
         """
@@ -506,8 +506,25 @@ class WebsocketServer:
         recognition_done = asyncio.Event()
 
         # Speech configuration
+        languages = os.getenv("AZURE_SPEECH_LANGUAGES", "en-US").split(",")
+
+        if len(languages) > 1:
+            auto_detect_source_language_config = None
+            speech_config.speech_recognition_language = languages[
+                0
+            ]  # Set to the only available language
+        else:
+            auto_detect_source_language_config = (
+                speechsdk.languageconfig.AutoDetectSourceLanguageConfig(
+                    languages=["en-US", "nl-NL"]
+                )
+            )
+            speech_config.set_property(
+                property_id=speechsdk.PropertyId.SpeechServiceConnection_LanguageIdMode,
+                value="Continuous",
+            )
+
         speech_config.output_format = speechsdk.OutputFormat.Detailed
-        speech_config.speech_recognition_language = "en-US"  # TODO add continuous LID
         speech_config.request_word_level_timestamps()
         speech_config.enable_audio_logging()
         speech_config.enable_dictation()
@@ -522,7 +539,9 @@ class WebsocketServer:
             stream=self.clients[session_id].audio_buffer
         )
         speech_recognizer = speechsdk.SpeechRecognizer(
-            speech_config=speech_config, audio_config=audio_config
+            speech_config=speech_config,
+            audio_config=audio_config,
+            auto_detect_source_language_config=auto_detect_source_language_config,
         )
 
         # Phrase list
@@ -541,13 +560,23 @@ class WebsocketServer:
             """Callback that logs the recognized speech once the recognition is done."""
             self.logger.info(f"[{session_id}] Recognized: {event.result.text}")
             self.logger.debug(f"[{session_id}] Recognized JSON: {event.result.json}")
+
             json_data = json.loads(event.result.json)
+            text = event.result.text
+
+            # Capitalize first letter and add period if missing proper sentence ending
+            if text and not any(
+                text.endswith(end) for end in [".", "!", "?", ":", ";"]
+            ):
+                text = text[0].upper() + text[1:] + "."
+            elif text and not text[0].isupper():
+                text = text[0].upper() + text[1:]
 
             # Store transcript in local memory
             self.clients[session_id].transcript.append(
                 {
                     "channel": json_data["Channel"] if is_multichannel else None,
-                    "text": event.result.text,
+                    "text": text,
                 }
             )
 
@@ -557,7 +586,7 @@ class WebsocketServer:
                     event=AzureGenesysEvent.PARTIAL_TRANSCRIPT,
                     session_id=session_id,
                     message={
-                        "transcript": event.result.text,
+                        "transcript": text,
                         "channel": json_data["Channel"] if is_multichannel else None,
                         "data": json_data,
                     },
