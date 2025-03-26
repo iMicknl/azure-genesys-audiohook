@@ -207,7 +207,7 @@ class WebsocketServer:
 
         server_message = {
             "version": "2",
-            "type": str(type),
+            "type": type,
             "seq": self.clients[session_id].server_seq,
             "clientseq": client_message["seq"],
             "id": session_id,
@@ -281,6 +281,7 @@ class WebsocketServer:
         """
         parameters = message["parameters"]
         conversation_id = parameters["conversationId"]
+        ani = parameters["participant"]["ani"]
         ani_name = parameters["participant"]["aniName"]
         dnis = parameters["participant"]["dnis"]
         session_id = message["id"]
@@ -294,10 +295,11 @@ class WebsocketServer:
             return
 
         self.logger.info(
-            f"[{session_id}] Session opened with conversation ID: {conversation_id}, ANI Name: {ani_name}, DNIS: {dnis}, Position: {position}"
+            f"[{session_id}] Session opened with conversation ID: {conversation_id}, ani: {ani}, ANI Name: {ani_name}, DNIS: {dnis}, Position: {position}"
         )
         self.logger.info(f"[{session_id}] Available media: {media}")
 
+        self.clients[session_id].ani = ani
         self.clients[session_id].ani_name = ani_name
         self.clients[session_id].dnis = dnis
         self.clients[session_id].conversation_id = conversation_id
@@ -555,8 +557,11 @@ class WebsocketServer:
         speech_config.output_format = speechsdk.OutputFormat.Detailed
         speech_config.request_word_level_timestamps()
         speech_config.enable_audio_logging()
-        speech_config.enable_dictation()
         speech_config.set_profanity(speechsdk.ProfanityOption.Removed)
+        # speech_config.set_property(
+        #     speechsdk.PropertyId.SpeechServiceConnection_InitialSilenceTimeoutMs,
+        #     "45000",
+        # )
 
         # Preview: only supported for en-us
         speech_config.set_property(
@@ -588,8 +593,14 @@ class WebsocketServer:
             """Callback that logs the recognized speech once the recognition is done."""
             self.logger.info(f"[{session_id}] Recognized: {event.result.text}")
             self.logger.debug(f"[{session_id}] Recognized JSON: {event.result.json}")
-
             json_data = json.loads(event.result.json)
+
+            if json_data["RecognitionStatus"] == "InitialSilenceTimeout":
+                self.logger.warning(
+                    f"[{session_id}] Initial silence timeout. No speech detected."
+                )
+                return
+
             text = event.result.text
 
             # Capitalize first letter and add period if missing proper sentence ending

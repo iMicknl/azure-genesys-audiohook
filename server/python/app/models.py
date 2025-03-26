@@ -30,6 +30,7 @@ class ServerMessageBase(MessageBase):
 class ClientSession:
     """Dataclass to store client session details"""
 
+    ani: str | None = None
     ani_name: str | None = None
     dnis: str | None = None
     conversation_id: str | None = None
