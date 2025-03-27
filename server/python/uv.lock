@@ -445,6 +445,7 @@ dependencies = [
     { name = "numpy" },
     { name = "python-dotenv" },
     { name = "quart" },
+    { name = "quart-cors" },
     { name = "uvicorn" },
 ]
 
@@ -460,15 +461,16 @@ dev = [
 requires-dist = [
     { name = "aiohttp", specifier = ">=3.11.7" },
     { name = "audioop-lts", marker = "python_full_version >= '3.13'" },
-    { name = "azure-cognitiveservices-speech", specifier = "==1.43.0" },
-    { name = "azure-eventhub", specifier = "==5.14.0" },
+    { name = "azure-cognitiveservices-speech", specifier = ">=1.40.0" },
+    { name = "azure-eventhub", specifier = ">=5.13.0" },
     { name = "azure-identity", specifier = ">=1.19.0" },
-    { name = "azure-storage-blob", specifier = "==12.24.1" },
-    { name = "gunicorn", specifier = "==23.0.0" },
-    { name = "numpy", specifier = "==2.2.4" },
-    { name = "python-dotenv", specifier = "==1.1.0" },
-    { name = "quart", specifier = "==0.20.0" },
-    { name = "uvicorn", specifier = "==0.34.0" },
+    { name = "azure-storage-blob", specifier = ">=12.24.0" },
+    { name = "gunicorn", specifier = ">=23.0.0" },
+    { name = "numpy", specifier = ">=2.1.1" },
+    { name = "python-dotenv", specifier = ">=1.0.1" },
+    { name = "quart", specifier = ">=0.19.6" },
+    { name = "quart-cors", specifier = ">=0.8.0" },
+    { name = "uvicorn", specifier = ">=0.30.6" },
 ]
 
 [package.metadata.requires-dev]
@@ -991,6 +993,18 @@ dependencies = [
 sdist = { url = "https://files.pythonhosted.org/packages/1d/9d/12e1143a5bd2ccc05c293a6f5ae1df8fd94a8fc1440ecc6c344b2b30ce13/quart-0.20.0.tar.gz", hash = "sha256:08793c206ff832483586f5ae47018c7e40bdd75d886fee3fabbdaa70c2cf505d", size = 63874 }
 wheels = [
     { url = "https://files.pythonhosted.org/packages/7e/e9/cc28f21f52913adf333f653b9e0a3bf9cb223f5083a26422968ba73edd8d/quart-0.20.0-py3-none-any.whl", hash = "sha256:003c08f551746710acb757de49d9b768986fd431517d0eb127380b656b98b8f1", size = 77960 },
+]
+
+[[package]]
+name = "quart-cors"
+version = "0.8.0"
+source = { registry = "https://pypi.org/simple" }
+dependencies = [
+    { name = "quart" },
+]
+sdist = { url = "https://files.pythonhosted.org/packages/14/b1/2a65be601f3c92c913f3321ee186d10c2da4325447b4b0fca83e0c493c60/quart_cors-0.8.0.tar.gz", hash = "sha256:ac32c4931da6fba944e9e2d3f856f2db4fd82e3fb905a09646086780c221a118", size = 12466 }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/ea/31/da390a5a10674481dea2909178973de81fa3a246c0eedcc0e1e4114f52f8/quart_cors-0.8.0-py3-none-any.whl", hash = "sha256:62dc811768e2e1704d2b99d5880e3eb26fc776832305a19ea53db66f63837767", size = 8698 },
 ]
 
 [[package]]

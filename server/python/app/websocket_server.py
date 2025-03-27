@@ -10,6 +10,7 @@ from azure.eventhub import EventData
 from azure.eventhub.aio import EventHubProducerClient
 from azure.storage.blob.aio import BlobServiceClient
 from quart import Quart, websocket
+from quart_cors import route_cors
 
 from .audio import convert_to_wav
 from .enums import (
@@ -43,9 +44,20 @@ class WebsocketServer:
 
     def setup_routes(self):
         """Setup the routes for the server"""
-        self.app.route("/")(self.health_check)
-        self.app.route("/conversation/<conversation_id>")(self.get_conversation)
-        self.app.websocket("/ws")(self.ws)
+
+        @self.app.route("/")
+        @route_cors(allow_origin="*")
+        async def health():
+            return await self.health_check()
+
+        @self.app.route("/conversation/<conversation_id>")
+        @route_cors(allow_origin="*")
+        async def get_conversation(conversation_id):
+            return await self.get_conversation(conversation_id)
+
+        @self.app.websocket("/ws")
+        async def ws():
+            return await self.ws()
 
     async def create_connections(self):
         """Create connections before serving"""
