@@ -39,13 +39,23 @@ class WebsocketServer:
 
     def __init__(self):
         """Initialize the server"""
-        self.app = Quart(__name__)
+        self.app = Quart(__name__, static_folder="../static")
         self.setup_routes()
         self.app.before_serving(self.create_connections)
         self.app.after_serving(self.close_connections)
 
     def setup_routes(self):
         """Setup the routes for the server"""
+
+        @self.app.route("/")
+        async def index():
+            # Serve the static index.html file from root path
+            return await self.app.send_static_file("index.html")
+
+        @self.app.route("/assets/<path:filename>")
+        async def assets(filename):
+            # Serve static assets
+            return await self.app.send_static_file(f"assets/{filename}")
 
         @self.app.route("/api/conversations")
         @route_cors(allow_origin="*")
@@ -60,6 +70,14 @@ class WebsocketServer:
         @self.app.websocket("/ws")
         async def ws():
             return await self.ws()
+
+        # Catch-all route for SPA client-side routing
+        # This should be the last route definition
+        @self.app.route("/<path:path>")
+        async def catch_all(path):
+            # Let the existing routes handle their own paths
+            # Only serve index.html for routes that should be handled by the SPA
+            return await self.app.send_static_file("index.html")
 
     async def create_connections(self):
         """Create connections before serving"""
@@ -820,6 +838,7 @@ class WebsocketServer:
             - Act as an agent to help callcenter agents summarize their conversation with a customer
             - The summary should cover all the key points and main ideas presented in the original text, while also condensing the information into a concise and easy-to-understand format.
             - Please ensure that the summary includes relevant details and examples that support the main ideas, while avoiding any unnecessary information or repetition.
+            - Never include any medical information, since we are not allowed to process and store this data.
 
             ## Defining the output format
             - Your summary should be appropriate for the length and complexity of the original text, providing a clear and accurate overview without omitting any important information, in 400 characters maximum.
