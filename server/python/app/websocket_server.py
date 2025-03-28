@@ -581,7 +581,7 @@ class WebsocketServer:
 
         # Determine speech configuration based on channel count and authentication method
         # Use multichannel (preview) for stereo calls
-        is_multichannel = len(self.clients[session_id].media["channels"]) > 10
+        is_multichannel = len(self.clients[session_id].media["channels"]) > 1
         region = os.environ["AZURE_SPEECH_REGION"]
         endpoint = (
             f"wss://{region}.stt.speech.microsoft.com/speech/recognition/conversation/cognitiveservices/v1?setfeature=multichannel2"
