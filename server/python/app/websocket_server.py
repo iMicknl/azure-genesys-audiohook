@@ -9,6 +9,7 @@ import azure.cognitiveservices.speech as speechsdk
 from azure.eventhub import EventData
 from azure.eventhub.aio import EventHubProducerClient
 from azure.storage.blob.aio import BlobServiceClient
+from openai import AsyncAzureOpenAI
 from quart import Quart, websocket
 from quart_cors import route_cors
 
@@ -383,6 +384,9 @@ class WebsocketServer:
                     AzureGenesysEvent.TRANSCRIPT_AVAILABLE
                 )
 
+                # Start async task to generate summary with OpenAI (non-blocking)
+                asyncio.create_task(self.generate_summary(session_id))
+
                 # Save WAV file from raw audio buffer
                 # TODO retrieve raw bytes from PushAudioInputStream to avoid saving two buffers
                 if self.clients[session_id].raw_audio_buffer:
@@ -692,3 +696,42 @@ class WebsocketServer:
         )
 
         self.logger.info(f"[{session_id}] Stopped continuous recognition.")
+
+    async def generate_summary(self, session_id: str):
+        """Generate a summary from transcript using OpenAI."""
+
+        self.logger.info(f"[{session_id}] Generating summary from transcript...")
+
+        # Get the transcript text from all channels
+        transcript_text = " ".join(
+            [item["text"] for item in self.clients[session_id].transcript]
+        )
+
+        # Simple implementation using OpenAI
+        client = AsyncAzureOpenAI(
+            api_key=os.getenv("AZURE_OPENAI_KEY"),
+            api_version="2024-10-21",
+            azure_endpoint=os.getenv("AZURE_OPENAI_ENDPOINT"),
+        )
+
+        response = await client.chat.completions.create(
+            model="gpt-4o-mini-eu",
+            messages=[
+                {
+                    "role": "system",
+                    "content": "You are a helpful assistant that summarizes conversation transcripts.",
+                },
+                {
+                    "role": "user",
+                    "content": f"Summarize this conversation transcript concisely: \n\n{transcript_text}",
+                },
+            ],
+            max_tokens=150,
+            temperature=0,
+        )
+
+        # Store the summary in the client session
+        summary = response.choices[0].message.content.strip()
+        self.clients[session_id].summary = summary
+
+        self.logger.info(f"[{session_id}] Summary generated: {summary}")
