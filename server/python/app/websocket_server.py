@@ -581,7 +581,7 @@ class WebsocketServer:
 
         # Determine speech configuration based on channel count and authentication method
         # Use multichannel (preview) for stereo calls
-        is_multichannel = len(self.clients[session_id].media["channels"]) > 1
+        is_multichannel = len(self.clients[session_id].media["channels"]) > 10
         region = os.environ["AZURE_SPEECH_REGION"]
         endpoint = (
             f"wss://{region}.stt.speech.microsoft.com/speech/recognition/conversation/cognitiveservices/v1?setfeature=multichannel2"
@@ -776,18 +776,25 @@ class WebsocketServer:
             # Simple implementation using OpenAI
             SYSTEM_MESSAGE = """
             ## Defining the profile, capabilities and limitations
-            - Act as an agent to help callcenter agents search for customer queries based on the transcript.
+            - Act as an agent to help callcenter agents with real-time insights.
             - During a call, you will be provided with a transcript of the conversation between the agent and the customer.
-            - In the background you will providing suggested search queries to the agent, based on the transcript.
-            - If there are no queries, return an empty list.
+            - In the background you will be providing:
+                - Suggested search queries to the agent, based on the transcript.
+                - Actions to take, based on the transcript.
+
+            ### Queries
+            - Limit to two queries. If there are no queries (yet), return an empty list.
             - Make it user readable, e.g. start with a capital and end with a question mark.
             - The queries should be relevant to the conversation and help the agent to find the right information.
-            - Limit to two queries.
+
+            ### Actions
+            - 'verification_level_3': Verification Level 3 is required in situations where customers discuss fraud, identity theft, or other sensitive information. This action should be taken when the agent needs to verify the customer's identity before proceeding with the conversation.
 
             ## Defining the output format
             - Output should be in JSON.
             - Output queries in 'suggested_queries' key, as a list of strings or empty list.
-            """
+            - Output action should be in 'suggested_actions' key, as a list of strings or empty list.
+            """.strip()
 
             response = await self.openai_client.chat.completions.create(
                 model="gpt-4o-mini-eu",
