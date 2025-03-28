@@ -43,6 +43,9 @@ class ClientSession:
     audio_buffer: speechsdk.audio.PushAudioInputStream | None = None
     recognize_task: asyncio.Task | None = None
     transcript: list[dict] = field(default_factory=list)
+    event_state: list[str] = field(default_factory=list)
+    summary: str | None = None
+    suggested_actions: list[str] = field(default_factory=list)
 
 
 @dataclass(kw_only=True)

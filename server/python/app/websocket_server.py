@@ -379,6 +379,10 @@ class WebsocketServer:
                     message={"transcript": self.clients[session_id].transcript},
                 )
 
+                self.clients[session_id].event_state.append(
+                    AzureGenesysEvent.TRANSCRIPT_AVAILABLE
+                )
+
                 # Save WAV file from raw audio buffer
                 # TODO retrieve raw bytes from PushAudioInputStream to avoid saving two buffers
                 if self.clients[session_id].raw_audio_buffer:
