@@ -35,6 +35,7 @@ class WebsocketServer:
     logger: logging.Logger = logging.getLogger(__name__)
     blob_service_client: BlobServiceClient | None = None
     producer_client: EventHubProducerClient | None = None
+    openai_client: AsyncAzureOpenAI | None = None
 
     def __init__(self):
         """Initialize the server"""
@@ -46,12 +47,12 @@ class WebsocketServer:
     def setup_routes(self):
         """Setup the routes for the server"""
 
-        @self.app.route("/")
+        @self.app.route("/api/conversations")
         @route_cors(allow_origin="*")
         async def health():
             return await self.health_check()
 
-        @self.app.route("/conversation/<conversation_id>")
+        @self.app.route("/api/conversation/<conversation_id>")
         @route_cors(allow_origin="*")
         async def get_conversation(conversation_id):
             return await self.get_conversation(conversation_id)
@@ -83,6 +84,12 @@ class WebsocketServer:
                 eventhub_name=os.environ["AZURE_EVENT_HUB_NAME"],
             )
 
+        self.openai_client = AsyncAzureOpenAI(
+            api_key=os.getenv("AZURE_OPENAI_KEY"),
+            api_version="2024-10-21",
+            azure_endpoint=os.getenv("AZURE_OPENAI_ENDPOINT"),
+        )
+
     async def close_connections(self):
         """Close connections after serving"""
         if self.blob_service_client:
@@ -91,13 +98,20 @@ class WebsocketServer:
         if self.producer_client:
             await self.producer_client.close()
 
+        if self.openai_client:
+            await self.openai_client.close()
+
     async def health_check(self):
         """Health check endpoint"""
         # TODO this won't show the right details when used with multiple workers (each worker will have its own memory storage)
         # Remove audio buffer from the response to avoid serialization issues
         connected_clients = {
             session_id: dataclasses.replace(
-                client, audio_buffer=None, raw_audio_buffer=None, recognize_task=None
+                client,
+                audio_buffer=None,
+                raw_audio_buffer=None,
+                recognize_task=None,
+                insights_task=None,
             )
             for session_id, client in self.clients.items()
         }
@@ -121,6 +135,7 @@ class WebsocketServer:
                     audio_buffer=None,
                     raw_audio_buffer=None,
                     recognize_task=None,
+                    insights_task=None,
                 )
                 return dataclasses.asdict(clean_session), 200
 
@@ -338,6 +353,12 @@ class WebsocketServer:
         self.logger.info(f"[{session_id}] Session opened with media: {selected_media}")
         self.clients[session_id].media = selected_media
 
+        # Start the insights generation task that runs every 5 seconds
+        self.clients[session_id].insights_task = asyncio.create_task(
+            self.schedule_insights_generation(session_id)
+        )
+        self.logger.info(f"[{session_id}] Started periodic insights generation task")
+
         await self.send_event(
             event=AzureGenesysEvent.SESSION_STARTED,
             session_id=session_id,
@@ -363,6 +384,20 @@ class WebsocketServer:
         """Handle close message"""
         parameters = message["parameters"]
         session_id = message["id"]
+
+        # Cancel the insights task if it's running
+        if (
+            self.clients[session_id].insights_task
+            and not self.clients[session_id].insights_task.done()
+        ):
+            self.logger.info(f"[{session_id}] Cancelling insights generation task")
+            self.clients[session_id].insights_task.cancel()
+            try:
+                await self.clients[session_id].insights_task
+            except asyncio.CancelledError:
+                self.logger.debug(
+                    f"[{session_id}] Insights task cancelled successfully"
+                )
 
         # Close audio buffer (and recognition) if the session is ended
         if self.clients[session_id].audio_buffer:
@@ -697,36 +732,115 @@ class WebsocketServer:
 
         self.logger.info(f"[{session_id}] Stopped continuous recognition.")
 
+    async def generate_insights(self, session_id: str):
+        """Generate a summary from transcript using OpenAI."""
+
+        if len(self.clients[session_id].transcript) > 0:
+            self.logger.info(
+                f"[{session_id}] Generating realtime insights from transcript..."
+            )
+
+            # Get the transcript text from all channels
+            # Get the transcript text from all channels, labeling each speaker
+            transcript_lines = []
+            for item in self.clients[session_id].transcript:
+                speaker = (
+                    "Agent"
+                    if item.get("channel") == 0
+                    else "Customer"
+                    if item.get("channel") == 1
+                    else "Unknown"
+                )
+                transcript_lines.append(f"{speaker}: {item['text']}")
+
+            transcript_text = "\n".join(transcript_lines)
+
+            # Simple implementation using OpenAI
+            SYSTEM_MESSAGE = """
+            ## Defining the profile, capabilities and limitations
+            - Act as an agent to help callcenter agents search for customer queries based on the transcript.
+            - During a call, you will be provided with a transcript of the conversation between the agent and the customer.
+            - In the background you will providing suggested search queries to the agent, based on the transcript.
+            - If there are no queries, return an empty list.
+            - Make it user readable, e.g. start with a capital and end with a question mark.
+            - The queries should be relevant to the conversation and help the agent to find the right information.
+            - Limit to two queries.
+
+            ## Defining the output format
+            - Output should be in JSON.
+            - Output queries in 'suggested_queries' key, as a list of strings or empty list.
+            """
+
+            response = await self.openai_client.chat.completions.create(
+                model="gpt-4o-mini-eu",
+                messages=[
+                    {
+                        "role": "system",
+                        "content": SYSTEM_MESSAGE,
+                    },
+                    {
+                        "role": "user",
+                        "content": f"Transcript: \n\n{transcript_text}",
+                    },
+                ],
+                max_tokens=400,
+                temperature=0,
+                response_format={"type": "json_object"},
+            )
+
+            # Store the summary in the client session
+            ai_insights = response.choices[0].message.content
+            self.clients[session_id].ai_insights = json.loads(ai_insights)
+
+            self.logger.info(f"[{session_id}] AI insights: {ai_insights}")
+
     async def generate_summary(self, session_id: str):
         """Generate a summary from transcript using OpenAI."""
 
         self.logger.info(f"[{session_id}] Generating summary from transcript...")
 
         # Get the transcript text from all channels
-        transcript_text = " ".join(
-            [item["text"] for item in self.clients[session_id].transcript]
-        )
+        # Get the transcript text from all channels, labeling each speaker
+        transcript_lines = []
+        for item in self.clients[session_id].transcript:
+            speaker = (
+                "Agent"
+                if item.get("channel") == 0
+                else "Customer"
+                if item.get("channel") == 1
+                else "Unknown"
+            )
+            transcript_lines.append(f"{speaker}: {item['text']}")
+
+        transcript_text = "\n".join(transcript_lines)
 
         # Simple implementation using OpenAI
-        client = AsyncAzureOpenAI(
-            api_key=os.getenv("AZURE_OPENAI_KEY"),
-            api_version="2024-10-21",
-            azure_endpoint=os.getenv("AZURE_OPENAI_ENDPOINT"),
-        )
+        SYSTEM_MESSAGE = """
+            ## Defining the profile, capabilities and limitations
+            - Act as an agent to help callcenter agents summarize their conversation with a customer
+            - The summary should cover all the key points and main ideas presented in the original text, while also condensing the information into a concise and easy-to-understand format.
+            - Please ensure that the summary includes relevant details and examples that support the main ideas, while avoiding any unnecessary information or repetition.
 
-        response = await client.chat.completions.create(
+            ## Defining the output format
+            - Your summary should be appropriate for the length and complexity of the original text, providing a clear and accurate overview without omitting any important information, in 400 characters maximum.
+            - Your response should contain the following details:
+                - Summary: What is the main question of the customer?
+                - Solution: What is the answer(s) or solution(s) for the customer, provided by the agent?
+            """
+
+        response = await self.openai_client.chat.completions.create(
             model="gpt-4o-mini-eu",
             messages=[
                 {
                     "role": "system",
-                    "content": "You are a helpful assistant that summarizes conversation transcripts.",
+                    "content": SYSTEM_MESSAGE,
                 },
                 {
                     "role": "user",
-                    "content": f"Summarize this conversation transcript concisely: \n\n{transcript_text}",
+                    "content": f"Summarize this transcript: \n\n{transcript_text}",
                 },
             ],
-            max_tokens=150,
+            max_tokens=200,
             temperature=0,
         )
 
@@ -735,3 +849,27 @@ class WebsocketServer:
         self.clients[session_id].summary = summary
 
         self.logger.info(f"[{session_id}] Summary generated: {summary}")
+
+    async def schedule_insights_generation(self, session_id: str):
+        """
+        Schedule a periodic task to generate insights every 5 seconds.
+        This runs in the background for the duration of the call.
+        """
+        while True:
+            # Only generate insights if we have some transcript data
+            if (
+                session_id in self.clients
+                and len(self.clients[session_id].transcript) > 0
+            ):
+                try:
+                    self.logger.debug(
+                        f"[{session_id}] Running scheduled insights generation"
+                    )
+                    await self.generate_insights(session_id)
+                except Exception as e:
+                    self.logger.error(
+                        f"[{session_id}] Error generating insights: {str(e)}"
+                    )
+
+            # Wait for 5 seconds before the next run
+            await asyncio.sleep(5)

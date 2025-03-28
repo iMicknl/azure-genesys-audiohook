@@ -45,7 +45,8 @@ class ClientSession:
     transcript: list[dict] = field(default_factory=list)
     event_state: list[str] = field(default_factory=list)
     summary: str | None = None
-    suggested_actions: list[str] = field(default_factory=list)
+    ai_insights: list[str] = field(default_factory=list)
+    insights_task: asyncio.Task | None = None
 
 
 @dataclass(kw_only=True)
