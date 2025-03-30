@@ -47,6 +47,8 @@ class ClientSession:
     summary: str | None = None
     ai_insights: list[str] = field(default_factory=list)
     insights_task: asyncio.Task | None = None
+    start_streaming: bool = False
+    start_streaming_task: asyncio.Task | None = None
 
 
 @dataclass(kw_only=True)

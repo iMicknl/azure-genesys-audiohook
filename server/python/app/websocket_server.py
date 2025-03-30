@@ -130,6 +130,7 @@ class WebsocketServer:
                 raw_audio_buffer=None,
                 recognize_task=None,
                 insights_task=None,
+                start_streaming_task=None,
             )
             for session_id, client in self.clients.items()
         }
@@ -154,7 +155,14 @@ class WebsocketServer:
                     raw_audio_buffer=None,
                     recognize_task=None,
                     insights_task=None,
+                    start_streaming_task=None,
                 )
+
+                if clean_session.start_streaming is False:
+                    # Set start_streaming to True if it was False
+                    # The first request to this endpoint will enable the audio streaming
+                    self.clients[session_id].start_streaming = True
+
                 return dataclasses.asdict(clean_session), 200
 
         # Return 404 if no matching session is found
@@ -253,7 +261,7 @@ class WebsocketServer:
             "version": "2",
             "type": type,
             "seq": self.clients[session_id].server_seq,
-            "clientseq": client_message["seq"],
+            "clientseq": self.clients[session_id].client_seq,
             "id": session_id,
             "parameters": parameters,
         }
@@ -363,7 +371,7 @@ class WebsocketServer:
             type=ServerMessageType.OPENED,
             client_message=message,
             parameters={
-                "startPaused": False,
+                "startPaused": True,
                 "media": [selected_media],
             },
         )
@@ -376,6 +384,11 @@ class WebsocketServer:
             self.schedule_insights_generation(session_id)
         )
         self.logger.info(f"[{session_id}] Started periodic insights generation task")
+
+        self.clients[session_id].start_streaming_task = asyncio.create_task(
+            self.start_streaming(session_id)
+        )
+        self.logger.info(f"[{session_id}] Started check streaming task")
 
         await self.send_event(
             event=AzureGenesysEvent.SESSION_STARTED,
@@ -899,3 +912,32 @@ class WebsocketServer:
 
             # Wait for 5 seconds before the next run
             await asyncio.sleep(5)
+
+    async def start_streaming(self, session_id: str):
+        """
+        Schedule a periodic task to generate insights every 5 seconds.
+        This runs in the background for the duration of the call.
+        """
+        while True:
+            if (
+                session_id in self.clients
+                and self.clients[session_id].start_streaming is True
+            ):
+                self.logger.info(
+                    f"[{session_id}] Resuming audio streaming as requested by API"
+                )
+
+                # Send RESUME message to start audio streaming
+                await self.send_message(
+                    type=ServerMessageType.RESUME,
+                    client_message={
+                        "id": session_id,
+                        "seq": self.clients[session_id].client_seq,
+                    },
+                )
+
+                # Cancel this task since we only need to send RESUME once
+                self.clients[session_id].start_streaming_task.cancel()
+                return  # Exit the task after sending RESUME
+
+            await asyncio.sleep(1)
