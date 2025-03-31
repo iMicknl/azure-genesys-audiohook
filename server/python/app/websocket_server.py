@@ -623,7 +623,7 @@ class WebsocketServer:
         # Speech configuration
         languages = os.getenv("AZURE_SPEECH_LANGUAGES", "en-US").split(",")
 
-        if len(languages) > 1:
+        if len(languages) == 1:
             auto_detect_source_language_config = None
             speech_config.speech_recognition_language = languages[
                 0
@@ -631,7 +631,7 @@ class WebsocketServer:
         else:
             auto_detect_source_language_config = (
                 speechsdk.languageconfig.AutoDetectSourceLanguageConfig(
-                    languages=["en-US", "nl-NL"]
+                    languages=languages
                 )
             )
             speech_config.set_property(
