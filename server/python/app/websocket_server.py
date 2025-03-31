@@ -671,10 +671,6 @@ class WebsocketServer:
         speech_config.request_word_level_timestamps()
         speech_config.enable_audio_logging()
         speech_config.set_profanity(speechsdk.ProfanityOption.Removed)
-        # speech_config.set_property(
-        #     speechsdk.PropertyId.SpeechServiceConnection_InitialSilenceTimeoutMs,
-        #     "45000",
-        # )
 
         # Preview: only supported for en-us
         speech_config.set_property(
