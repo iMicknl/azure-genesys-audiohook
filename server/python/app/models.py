@@ -40,8 +40,10 @@ class ClientSession:
     last_rtt: int | None = None
     media: dict | None = None
     raw_audio_buffer: bytes | None = None
-    audio_buffer: speechsdk.audio.PushAudioInputStream | None = None
-    recognize_task: asyncio.Task | None = None
+    customer_audio_buffer: speechsdk.audio.PushAudioInputStream | None = None
+    agent_audio_buffer: speechsdk.audio.PushAudioInputStream | None = None
+    recognize_agent_task: asyncio.Task | None = None
+    recognize_customer_task: asyncio.Task | None = None
     transcript: list[dict] = field(default_factory=list)
     event_state: list[str] = field(default_factory=list)
     summary: str | None = None

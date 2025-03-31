@@ -7,6 +7,7 @@ from typing import Any
 
 import aiohttp
 import azure.cognitiveservices.speech as speechsdk
+import numpy as np
 from azure.eventhub import EventData
 from azure.eventhub.aio import EventHubProducerClient
 from azure.storage.blob.aio import BlobServiceClient
@@ -133,9 +134,11 @@ class WebsocketServer:
         connected_clients = {
             session_id: dataclasses.replace(
                 client,
-                audio_buffer=None,
+                customer_audio_buffer=None,
+                agent_audio_buffer=None,
                 raw_audio_buffer=None,
-                recognize_task=None,
+                recognize_customer_task=None,
+                recognize_agent_task=None,
                 insights_task=None,
                 start_streaming_task=None,
             )
@@ -158,9 +161,11 @@ class WebsocketServer:
                 # Return a single session object without audio buffers and tasks
                 clean_session = dataclasses.replace(
                     client,
-                    audio_buffer=None,
+                    customer_audio_buffer=None,
+                    agent_audio_buffer=None,
                     raw_audio_buffer=None,
-                    recognize_task=None,
+                    recognize_customer_task=None,
+                    recognize_agent_task=None,
                     insights_task=None,
                     start_streaming_task=None,
                 )
@@ -387,7 +392,7 @@ class WebsocketServer:
             type=ServerMessageType.OPENED,
             client_message=message,
             parameters={
-                "startPaused": True,
+                "startPaused": False,
                 "media": [selected_media],
             },
         )
@@ -568,7 +573,7 @@ class WebsocketServer:
         media = self.clients[session_id].media
 
         # Initialize the audio buffer for the session
-        if self.clients[session_id].audio_buffer is None:
+        if self.clients[session_id].customer_audio_buffer is None:
             self.logger.info(
                 f"[{session_id}] type {media['type']}, format {media['format']}, rate {media['rate']}, channels {len(media['channels'])}"
             )
@@ -576,21 +581,46 @@ class WebsocketServer:
             audio_format = speechsdk.audio.AudioStreamFormat(
                 samples_per_second=media["rate"],
                 bits_per_sample=8,
-                channels=len(media["channels"]),
+                channels=1,
                 wave_stream_format=speechsdk.AudioStreamWaveFormat.MULAW,
             )
 
-            stream = speechsdk.audio.PushAudioInputStream(stream_format=audio_format)
-            self.clients[session_id].audio_buffer = stream
+            agent_stream = speechsdk.audio.PushAudioInputStream(
+                stream_format=audio_format
+            )
+            self.clients[session_id].agent_audio_buffer = agent_stream
+
+            customer_stream = speechsdk.audio.PushAudioInputStream(
+                stream_format=audio_format
+            )
+            self.clients[session_id].customer_audio_buffer = customer_stream
+
             self.clients[session_id].raw_audio_buffer = bytearray()
 
             # Start the synchronous speech recognition as a asyncio task
-            self.clients[session_id].recognize_task = asyncio.create_task(
-                self.recognize_speech(session_id)
+            self.clients[session_id].recognize_customer_task = asyncio.create_task(
+                self.recognize_customer_speech(session_id)
+            )
+            self.clients[session_id].recognize_agent_task = asyncio.create_task(
+                self.recognize_agent_speech(session_id)
             )
 
+        # Split stream into two channels
+        if len(media["channels"]) > 1:
+            # audio is a 2-channel interleaved 8-bit PCMU audio stream
+            # which is separated into single streams
+            # using numpy
+            # stream the audio to pub/sub
+            array = np.frombuffer(data, dtype=np.int8)
+            reshaped = array.reshape((int(len(array) / 2), 2))
+            # append audio to customer audio buffer
+            customer_stream = reshaped[:, 0].tobytes()
+            # append audio to agent audio buffer
+            agent_stream = reshaped[:, 1].tobytes()
+
         # Append the buffers to the audio stream
-        self.clients[session_id].audio_buffer.write(data)
+        self.clients[session_id].agent_audio_buffer.write(agent_stream)
+        self.clients[session_id].customer_audio_buffer.write(customer_stream)
         self.clients[session_id].raw_audio_buffer += data
 
     async def send_event(
@@ -617,7 +647,7 @@ class WebsocketServer:
 
             self.logger.debug(f"[{session_id}] Sending event: {event_data}")
 
-    async def recognize_speech(self, session_id: str):
+    async def recognize_customer_speech(self, session_id: str):
         """Recognize speech from audio buffer using Azure Speech to Text."""
 
         # Determine speech configuration based on channel count and authentication method
@@ -678,7 +708,7 @@ class WebsocketServer:
         )
 
         audio_config = speechsdk.audio.AudioConfig(
-            stream=self.clients[session_id].audio_buffer
+            stream=self.clients[session_id].customer_audio_buffer
         )
         speech_recognizer = speechsdk.SpeechRecognizer(
             speech_config=speech_config,
@@ -726,7 +756,7 @@ class WebsocketServer:
             # Store transcript in local memory
             self.clients[session_id].transcript.append(
                 {
-                    "channel": json_data["Channel"] if is_multichannel else None,
+                    "channel": 0,
                     "text": text,
                 }
             )
@@ -738,7 +768,180 @@ class WebsocketServer:
                     session_id=session_id,
                     message={
                         "transcript": text,
-                        "channel": json_data["Channel"] if is_multichannel else None,
+                        "channel": 0,
+                        "data": json_data,
+                    },
+                ),
+                loop,
+            )
+
+        def session_stopped_cb(event: speechsdk.SpeechRecognitionCanceledEventArgs):
+            """Callback that signals to stop continuous recognition upon receiving an event."""
+            self.logger.info(f"[{session_id}] Session stopped: {event.session_id}")
+            recognition_done.set()
+
+        # Connect callbacks to the events fired by the speech recognizer
+        speech_recognizer.recognizing.connect(
+            lambda event: loop.call_soon_threadsafe(recognizing_cb, event)
+        )
+        speech_recognizer.recognized.connect(
+            lambda event: loop.call_soon_threadsafe(recognized_cb, event)
+        )
+        speech_recognizer.session_stopped.connect(
+            lambda event: loop.call_soon_threadsafe(session_stopped_cb, event)
+        )
+
+        speech_recognizer.session_started.connect(
+            lambda event: self.logger.info(
+                f"[{session_id}] Session started: {event.session_id}"
+            )
+        )
+
+        speech_recognizer.canceled.connect(
+            lambda event: self.logger.info(
+                f"[{session_id}] Canceled: {event.session_id}"
+            )
+        )
+
+        self.logger.info(f"[{session_id}] Starting continuous recognition.")
+
+        # Start continuous speech recognition
+        await asyncio.to_thread(
+            speech_recognizer.start_continuous_recognition_async().get
+        )
+
+        # Wait until all input processed without blocking the event loop
+        await recognition_done.wait()
+
+        # Stop recognition and clean up without blocking the event loop
+        await asyncio.to_thread(
+            speech_recognizer.stop_continuous_recognition_async().get
+        )
+
+        self.logger.info(f"[{session_id}] Stopped continuous recognition.")
+
+    async def recognize_agent_speech(self, session_id: str):
+        """Recognize speech from audio buffer using Azure Speech to Text."""
+
+        # Determine speech configuration based on channel count and authentication method
+        # Use multichannel (preview) for stereo calls
+        is_multichannel = len(self.clients[session_id].media["channels"]) > 1
+        region = os.environ["AZURE_SPEECH_REGION"]
+        endpoint = (
+            f"wss://{region}.stt.speech.microsoft.com/speech/recognition/conversation/cognitiveservices/v1?setfeature=multichannel2"
+            if is_multichannel
+            else None
+        )
+
+        # Create speech config with appropriate authentication (speech key vs managed identity)
+        if speech_key := os.getenv("AZURE_SPEECH_KEY"):
+            speech_config = speechsdk.SpeechConfig(
+                subscription=speech_key,
+                region=None if is_multichannel else region,
+                endpoint=endpoint,
+            )
+        else:
+            auth_token = get_speech_token(os.environ["AZURE_SPEECH_RESOURCE_ID"])
+            speech_config = speechsdk.SpeechConfig(
+                auth_token=auth_token,
+                region=None if is_multichannel else region,
+                endpoint=endpoint,
+            )
+
+        loop = asyncio.get_running_loop()
+        recognition_done = asyncio.Event()
+
+        # Speech configuration
+        languages = os.getenv("AZURE_SPEECH_LANGUAGES", "en-US").split(",")
+
+        if len(languages) == 1:
+            auto_detect_source_language_config = None
+            speech_config.speech_recognition_language = languages[
+                0
+            ]  # Set to the only available language
+        else:
+            auto_detect_source_language_config = (
+                speechsdk.languageconfig.AutoDetectSourceLanguageConfig(
+                    languages=languages
+                )
+            )
+            speech_config.set_property(
+                property_id=speechsdk.PropertyId.SpeechServiceConnection_LanguageIdMode,
+                value="Continuous",
+            )
+
+        speech_config.output_format = speechsdk.OutputFormat.Detailed
+        speech_config.request_word_level_timestamps()
+        speech_config.enable_audio_logging()
+        speech_config.set_profanity(speechsdk.ProfanityOption.Removed)
+
+        # Preview: only supported for en-us
+        speech_config.set_property(
+            speechsdk.PropertyId.Speech_SegmentationStrategy, "Semantic"
+        )
+
+        audio_config = speechsdk.audio.AudioConfig(
+            stream=self.clients[session_id].agent_audio_buffer
+        )
+        speech_recognizer = speechsdk.SpeechRecognizer(
+            speech_config=speech_config,
+            audio_config=audio_config,
+            auto_detect_source_language_config=auto_detect_source_language_config,
+        )
+
+        # Phrase list
+        phrase_list_grammar = speechsdk.PhraseListGrammar.from_recognizer(
+            speech_recognizer
+        )
+        phrase_list_grammar.addPhrase("Rabobank")
+        phrase_list_grammar.addPhrase("Bas")
+        phrase_list_grammar.addPhrase("Angela")
+        phrase_list_grammar.addPhrase("Rabo Scanner")
+
+        # Connect callbacks to the events fired by the speech recognizer
+        def recognizing_cb(event: speechsdk.SpeechRecognitionEventArgs):
+            """Callback that continuously logs the recognized speech."""
+            self.logger.info(f"[{session_id}] Recognizing: {event.result.text}")
+            self.logger.debug(f"[{session_id}] Recognizing JSON: {event.result.json}")
+
+        def recognized_cb(event: speechsdk.SpeechRecognitionEventArgs):
+            """Callback that logs the recognized speech once the recognition is done."""
+            self.logger.info(f"[{session_id}] Recognized: {event.result.text}")
+            self.logger.debug(f"[{session_id}] Recognized JSON: {event.result.json}")
+            json_data = json.loads(event.result.json)
+
+            if json_data["RecognitionStatus"] == "InitialSilenceTimeout":
+                self.logger.warning(
+                    f"[{session_id}] Initial silence timeout. No speech detected."
+                )
+                return
+
+            text = event.result.text
+
+            # Capitalize first letter and add period if missing proper sentence ending
+            if text and not any(
+                text.endswith(end) for end in [".", "!", "?", ":", ";"]
+            ):
+                text = text[0].upper() + text[1:] + "."
+            elif text and not text[0].isupper():
+                text = text[0].upper() + text[1:]
+
+            # Store transcript in local memory
+            self.clients[session_id].transcript.append(
+                {
+                    "channel": 1,
+                    "text": text,
+                }
+            )
+
+            # Send transcript to Event Hub
+            asyncio.run_coroutine_threadsafe(
+                self.send_event(
+                    event=AzureGenesysEvent.PARTIAL_TRANSCRIPT,
+                    session_id=session_id,
+                    message={
+                        "transcript": text,
+                        "channel": 1,
                         "data": json_data,
                     },
                 ),
