@@ -897,28 +897,29 @@ class WebsocketServer:
 
         self.logger.info(f"[{session_id}] Summary generated: {summary}")
 
-        # Send summary to Dynamics
-        dynamics_url = "https://prod-60.northeurope.logic.azure.com:443/workflows/f0a779f3b20949e3b20903eeb8b6f85b/triggers/manual/paths/invoke?api-version=2016-06-01"
-        payload = {
-            "conversation_id": self.clients[session_id].conversation_id,
-            "summary": summary,
-        }
+        if dynamics_url := os.getenv("DYNAMICS_PUSH_URL"):
+            # Send summary to Dynamics
+            dynamics_url = "https://prod-60.northeurope.logic.azure.com:443/workflows/f0a779f3b20949e3b20903eeb8b6f85b/triggers/manual/paths/invoke?api-version=2016-06-01"
+            payload = {
+                "conversation_id": self.clients[session_id].conversation_id,
+                "summary": summary,
+            }
 
-        async with aiohttp.ClientSession() as session:
-            try:
-                async with session.post(dynamics_url, json=payload) as response:
-                    if response.status == 202:
-                        self.logger.info(
-                            f"[{session_id}] Summary successfully sent to Dynamics"
-                        )
-                    else:
-                        self.logger.error(
-                            f"[{session_id}] Failed to send summary to Dynamics. Status: {response.status}"
-                        )
-            except Exception as e:
-                self.logger.error(
-                    f"[{session_id}] Error sending summary to Dynamics: {str(e)}"
-                )
+            async with aiohttp.ClientSession() as session:
+                try:
+                    async with session.post(dynamics_url, json=payload) as response:
+                        if response.status == 202:
+                            self.logger.info(
+                                f"[{session_id}] Summary successfully sent to Dynamics"
+                            )
+                        else:
+                            self.logger.error(
+                                f"[{session_id}] Failed to send summary to Dynamics. Status: {response.status}"
+                            )
+                except Exception as e:
+                    self.logger.error(
+                        f"[{session_id}] Error sending summary to Dynamics: {str(e)}"
+                    )
 
     async def schedule_insights_generation(self, session_id: str):
         """
