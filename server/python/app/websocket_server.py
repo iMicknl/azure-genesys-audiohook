@@ -452,8 +452,9 @@ class WebsocketServer:
                 )
 
         # Close audio buffer (and recognition) if the session is ended
-        if self.clients[session_id].audio_buffer:
-            self.clients[session_id].audio_buffer.close()
+        if self.clients[session_id].customer_audio_buffer:
+            self.clients[session_id].customer_audio_buffer.close()
+            self.clients[session_id].agent_audio_buffer.close()
 
         if (
             parameters["reason"] == CloseReason.END
