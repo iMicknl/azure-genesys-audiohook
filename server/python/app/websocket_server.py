@@ -778,9 +778,9 @@ class WebsocketServer:
             for item in self.clients[session_id].transcript:
                 speaker = (
                     "Agent"
-                    if item.get("channel") == 0
-                    else "Customer"
                     if item.get("channel") == 1
+                    else "Customer"
+                    if item.get("channel") == 0
                     else "Unknown"
                 )
                 transcript_lines.append(f"{speaker}: {item['text']}")
@@ -851,9 +851,9 @@ class WebsocketServer:
         for item in self.clients[session_id].transcript:
             speaker = (
                 "Agent"
-                if item.get("channel") == 0
-                else "Customer"
                 if item.get("channel") == 1
+                else "Customer"
+                if item.get("channel") == 0
                 else "Unknown"
             )
             transcript_lines.append(f"{speaker}: {item['text']}")
