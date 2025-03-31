@@ -15,6 +15,7 @@ from quart import Quart, websocket
 from quart_cors import route_cors
 
 from .audio import convert_to_wav
+from .database import Database
 from .enums import (
     AzureGenesysEvent,
     ClientMessageType,
@@ -30,13 +31,12 @@ from .storage import upload_blob_file
 class WebsocketServer:
     """Websocket server class"""
 
-    clients: dict[
-        str, ClientSession
-    ] = {}  # TODO make app stateless, keep state in CosmosDB?
+    clients: dict[str, ClientSession] = {}
     logger: logging.Logger = logging.getLogger(__name__)
     blob_service_client: BlobServiceClient | None = None
     producer_client: EventHubProducerClient | None = None
     openai_client: AsyncAzureOpenAI | None = None
+    database: Database = Database()
 
     def __init__(self):
         """Initialize the server"""
@@ -89,7 +89,7 @@ class WebsocketServer:
         elif account_url := os.getenv("AZURE_STORAGE_ACCOUNT_URL"):
             self.blob_service_client = BlobServiceClient(
                 account_url, credential=get_azure_credential_async()
-            )  # TODO cache DefaultAzureCredential
+            )
 
         if fully_qualified_namespace := os.getenv("AZURE_EVENT_HUB_HOSTNAME"):
             self.producer_client = EventHubProducerClient(
@@ -109,6 +109,9 @@ class WebsocketServer:
             azure_endpoint=os.getenv("AZURE_OPENAI_ENDPOINT"),
         )
 
+        # Create Cosmos DB connection
+        await self.database.create_connection()
+
     async def close_connections(self):
         """Close connections after serving"""
         if self.blob_service_client:
@@ -119,6 +122,9 @@ class WebsocketServer:
 
         if self.openai_client:
             await self.openai_client.close()
+
+        # Close Cosmos DB connection
+        await self.database.close_connection()
 
     async def health_check(self):
         """Health check endpoint"""
@@ -164,7 +170,16 @@ class WebsocketServer:
                     # The first request to this endpoint will enable the audio streaming
                     self.clients[session_id].start_streaming = True
 
+                # Save updated session to Cosmos DB
+                await self.database.save_session(
+                    conversation_id, self.clients[session_id]
+                )
+
                 return dataclasses.asdict(clean_session), 200
+
+        # Fallback to CosmosDB if no session is found in memory
+        if session := await self.database.get_session(conversation_id):
+            return session, 200
 
         # Return 404 if no matching session is found
         return {"error": "Conversation not found"}, 404
@@ -502,8 +517,20 @@ class WebsocketServer:
 
             await websocket.close(1000)
 
-            # TODO store session history in database, before removing
-            # del self.clients[session_id]
+            # Save the session to Cosmos DB before removing it from memory
+            if conversation_id := self.clients[session_id].conversation_id:
+                try:
+                    await self.database.save_session(
+                        conversation_id, self.clients[session_id]
+                    )
+                    self.logger.info(f"[{session_id}] Session saved to Cosmos DB")
+                except Exception as e:
+                    self.logger.error(
+                        f"[{session_id}] Failed to save session to Cosmos DB: {e}"
+                    )
+
+            # Remove the session from memory
+            del self.clients[session_id]
 
     async def handle_connection_probe(self, message: dict):
         """

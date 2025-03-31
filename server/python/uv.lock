@@ -186,6 +186,19 @@ wheels = [
 ]
 
 [[package]]
+name = "azure-cosmos"
+version = "4.9.0"
+source = { registry = "https://pypi.org/simple" }
+dependencies = [
+    { name = "azure-core" },
+    { name = "typing-extensions" },
+]
+sdist = { url = "https://files.pythonhosted.org/packages/be/7c/a4e7810f85e7f83d94265ef5ff0fb1efad55a768de737d940151ea2eec45/azure_cosmos-4.9.0.tar.gz", hash = "sha256:c70db4cbf55b0ff261ed7bb8aa325a5dfa565d3c6eaa43d75d26ae5e2ad6d74f", size = 1824155 }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/61/dc/380f843744535497acd0b85aacb59565c84fc28bf938c8d6e897a858cd95/azure_cosmos-4.9.0-py3-none-any.whl", hash = "sha256:3b60eaa01a16a857d0faf0cec304bac6fa8620a81bc268ce760339032ef617fe", size = 303157 },
+]
+
+[[package]]
 name = "azure-eventhub"
 version = "5.14.0"
 source = { registry = "https://pypi.org/simple" }
@@ -470,6 +483,7 @@ dependencies = [
     { name = "aiohttp" },
     { name = "audioop-lts", marker = "python_full_version >= '3.13'" },
     { name = "azure-cognitiveservices-speech" },
+    { name = "azure-cosmos" },
     { name = "azure-eventhub" },
     { name = "azure-identity" },
     { name = "azure-storage-blob" },
@@ -495,6 +509,7 @@ requires-dist = [
     { name = "aiohttp", specifier = ">=3.11.7" },
     { name = "audioop-lts", marker = "python_full_version >= '3.13'" },
     { name = "azure-cognitiveservices-speech", specifier = ">=1.40.0" },
+    { name = "azure-cosmos", specifier = ">=4.9.0" },
     { name = "azure-eventhub", specifier = ">=5.13.0" },
     { name = "azure-identity", specifier = ">=1.19.0" },
     { name = "azure-storage-blob", specifier = ">=12.24.0" },
