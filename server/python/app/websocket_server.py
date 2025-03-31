@@ -899,7 +899,6 @@ class WebsocketServer:
 
         if dynamics_url := os.getenv("DYNAMICS_PUSH_URL"):
             # Send summary to Dynamics
-            dynamics_url = "https://prod-60.northeurope.logic.azure.com:443/workflows/f0a779f3b20949e3b20903eeb8b6f85b/triggers/manual/paths/invoke?api-version=2016-06-01"
             payload = {
                 "conversation_id": self.clients[session_id].conversation_id,
                 "summary": summary,
