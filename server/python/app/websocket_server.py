@@ -794,6 +794,11 @@ class WebsocketServer:
             - In the background you will be providing:
                 - Suggested search queries to the agent, based on the transcript.
                 - Actions to take, based on the transcript.
+                - Sentiment analysis of the conversation.
+
+            ### Sentiment
+            - The sentiment should be one of the following: "positive", "neutral", "negative".
+            - The sentiment should be based on the overall tone of the conversation, not just individual phrases.
 
             ### Queries
             - Limit to two queries. If there are no queries (yet), return an empty list.
@@ -807,6 +812,7 @@ class WebsocketServer:
             - Output should be in JSON.
             - Output queries in 'suggested_queries' key, as a list of strings or empty list.
             - Output action should be in 'suggested_actions' key, as a list of strings or empty list.
+            - Output sentiment should be in 'sentiment' key, as a string.
             """.strip()
 
             response = await self.openai_client.chat.completions.create(
@@ -831,6 +837,7 @@ class WebsocketServer:
             self.clients[session_id].ai_insights = json.loads(ai_insights)
 
             self.logger.info(f"[{session_id}] AI insights: {ai_insights}")
+            self.logger.info(f"[{session_id}] AI insights costs: {response.usage}")
 
     async def generate_summary(self, session_id: str):
         """Generate a summary from transcript using OpenAI."""
@@ -863,8 +870,8 @@ class WebsocketServer:
             ## Defining the output format
             - Your summary should be appropriate for the length and complexity of the original text, providing a clear and accurate overview without omitting any important information, in 400 characters maximum.
             - Your response should contain the following details:
-                - Summary: What is the main question of the customer?
-                - Solution: What is the answer(s) or solution(s) for the customer, provided by the agent?
+                - **Summary**: What is the main question of the customer?
+                - **Solution**: What is the answer(s) or solution(s) for the customer, provided by the agent?
             """
 
         response = await self.openai_client.chat.completions.create(
