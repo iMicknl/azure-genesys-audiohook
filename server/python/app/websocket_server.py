@@ -549,7 +549,7 @@ class WebsocketServer:
                 samples_per_second=media["rate"],
                 bits_per_sample=8,
                 channels=len(media["channels"]),
-                wave_stream_format=speechsdk.AudioStreamWaveFormat.PCM,
+                wave_stream_format=speechsdk.AudioStreamWaveFormat.MULAW,
             )
 
             stream = speechsdk.audio.PushAudioInputStream(stream_format=audio_format)
