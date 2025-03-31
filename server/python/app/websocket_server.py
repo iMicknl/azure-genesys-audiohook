@@ -666,7 +666,7 @@ class WebsocketServer:
         phrase_list_grammar = speechsdk.PhraseListGrammar.from_recognizer(
             speech_recognizer
         )
-        phrase_list_grammar.addPhrase("Contoso")
+        phrase_list_grammar.addPhrase("Rabobank")
 
         # Connect callbacks to the events fired by the speech recognizer
         def recognizing_cb(event: speechsdk.SpeechRecognitionEventArgs):
