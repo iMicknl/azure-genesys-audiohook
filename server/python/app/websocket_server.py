@@ -187,9 +187,12 @@ class WebsocketServer:
 
                 return dataclasses.asdict(clean_session), 200
 
-        # Fallback to CosmosDB if no session is found in memory
-        if session := await self.database.get_session(conversation_id):
-            return session, 200
+        try:
+            # Fallback to CosmosDB if no session is found in memory
+            if session := await self.database.get_session(conversation_id):
+                return session, 200
+        except Exception as e:
+            self.logger.error(f"Failed to retrieve session from Cosmos DB: {e}")
 
         # Return 404 if no matching session is found
         return {"error": "Conversation not found"}, 404
@@ -1102,6 +1105,7 @@ class WebsocketServer:
             - The summary should cover all the key points and main ideas presented in the original text, while also condensing the information into a concise and easy-to-understand format.
             - Please ensure that the summary includes relevant details and examples that support the main ideas, while avoiding any unnecessary information or repetition.
             - Never include any medical information, since we are not allowed to process and store this data.
+            - Don't mention the agents or customers names, just refer to them as agent and customer.
 
             ## Defining the output format
             - Your summary should be appropriate for the length and complexity of the original text, providing a clear and accurate overview without omitting any important information, in 400 characters maximum.
@@ -1122,7 +1126,7 @@ class WebsocketServer:
                     "content": f"Summarize this transcript: \n\n{transcript_text}",
                 },
             ],
-            max_tokens=200,
+            max_tokens=300,
             temperature=0,
         )
 
