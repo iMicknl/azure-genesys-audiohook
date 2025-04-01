@@ -175,10 +175,15 @@ class WebsocketServer:
                     # The first request to this endpoint will enable the audio streaming
                     self.clients[session_id].start_streaming = True
 
-                # Save updated session to Cosmos DB
-                await self.database.save_session(
-                    conversation_id, self.clients[session_id]
-                )
+                try:
+                    # Save the updated session to Cosmos DB
+                    await self.database.save_session(
+                        conversation_id, self.clients[session_id]
+                    )
+                except Exception as e:
+                    self.logger.error(
+                        f"[{session_id}] Failed to save session to Cosmos DB: {e}"
+                    )
 
                 return dataclasses.asdict(clean_session), 200
 
@@ -392,7 +397,7 @@ class WebsocketServer:
             type=ServerMessageType.OPENED,
             client_message=message,
             parameters={
-                "startPaused": False,
+                "startPaused": True,
                 "media": [selected_media],
             },
         )
