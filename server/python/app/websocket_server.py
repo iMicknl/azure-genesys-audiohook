@@ -733,6 +733,7 @@ class WebsocketServer:
         phrase_list_grammar.addPhrase("Bas")
         phrase_list_grammar.addPhrase("Angela")
         phrase_list_grammar.addPhrase("Rabo Scanner")
+        phrase_list_grammar.addPhrase("Emiel")
 
         # Connect callbacks to the events fired by the speech recognizer
         def recognizing_cb(event: speechsdk.SpeechRecognitionEventArgs):
