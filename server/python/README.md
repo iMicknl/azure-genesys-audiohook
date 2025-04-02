@@ -42,6 +42,9 @@ npm start --uri ws://host.docker.internal:5001/ws --api-key your_api_key --clien
 
 To perform a load test on your websocket server, use the `--session-count` parameter to set the number of concurrent sessions.
 
+> [!WARNING]
+> Ensure your audio (.wav) uses 8000Hz sample rate, U-Law encoding, and preferably stereo channels (customer/agent split). Use tools like Audacity for conversion.
+
 ### Tests
 
 You can run the tests via the command below. The tests are written using the Pytest framework.
