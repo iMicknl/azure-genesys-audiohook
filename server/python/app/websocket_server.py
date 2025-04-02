@@ -416,7 +416,7 @@ class WebsocketServer:
             await websocket.close(1000)
 
             # TODO store session history in database, before removing
-            # del self.clients[session_id]
+            del self.clients[session_id]
 
     async def handle_connection_probe(self, message: dict):
         """
