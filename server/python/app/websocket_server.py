@@ -136,8 +136,6 @@ class WebsocketServer:
                 code=1008,
             )
 
-        self.logger.debug(headers)
-
         # Save new client in memory storage
         self.clients[session_id] = ClientSession()
 
@@ -163,7 +161,6 @@ class WebsocketServer:
                 data = await websocket.receive()
 
                 if isinstance(data, str):
-                    self.logger.debug(f"RECEIVING {data}")
                     await self.handle_incoming_message(json.loads(data))
                 elif isinstance(data, bytes):
                     await self.handle_bytes(data, session_id)
@@ -197,7 +194,6 @@ class WebsocketServer:
         type: ServerMessageType,
         client_message: dict,
         parameters: dict = {},
-        position: str | None = None,
     ):
         """Send a message to the client."""
         session_id = client_message["id"]
@@ -211,9 +207,6 @@ class WebsocketServer:
             "id": session_id,
             "parameters": parameters,
         }
-
-        if position:
-            server_message["position"] = position
 
         self.logger.info(f"[{session_id}] Server sending message with type {type}.")
         self.logger.debug(server_message)
