@@ -30,6 +30,7 @@ class ServerMessageBase(MessageBase):
 class ClientSession:
     """Dataclass to store client session details"""
 
+    ani: str | None = None
     ani_name: str | None = None
     dnis: str | None = None
     conversation_id: str | None = None
@@ -41,7 +42,7 @@ class ClientSession:
     raw_audio_buffer: bytes | None = None
     audio_buffer: speechsdk.audio.PushAudioInputStream | None = None
     recognize_task: asyncio.Task | None = None
-    transcript: str = ""
+    transcript: list[dict] = field(default_factory=list)
 
 
 @dataclass(kw_only=True)

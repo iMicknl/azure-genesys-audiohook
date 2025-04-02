@@ -44,6 +44,7 @@ class WebsocketServer:
     def setup_routes(self):
         """Setup the routes for the server"""
         self.app.route("/")(self.health_check)
+        self.app.route("/conversation/<conversation_id>")(self.get_conversation)
         self.app.websocket("/ws")(self.ws)
 
     async def create_connections(self):
@@ -95,6 +96,23 @@ class WebsocketServer:
                 client_sessions=connected_clients,
             )
         )
+
+    async def get_conversation(self, conversation_id):
+        """Get client session by conversation ID"""
+        # Look for client session with matching conversation_id
+        for session_id, client in self.clients.items():
+            if getattr(client, "conversation_id", None) == conversation_id:
+                # Return a single session object without audio buffers and tasks
+                clean_session = dataclasses.replace(
+                    client,
+                    audio_buffer=None,
+                    raw_audio_buffer=None,
+                    recognize_task=None,
+                )
+                return dataclasses.asdict(clean_session), 200
+
+        # Return 404 if no matching session is found
+        return {"error": "Conversation not found"}, 404
 
     async def ws(self):
         """Websocket endpoint"""
@@ -172,23 +190,27 @@ class WebsocketServer:
         return await websocket.close(code)
 
     async def send_message(
-        self, type: ServerMessageType, client_message: dict, parameters: dict = {}
+        self,
+        type: ServerMessageType,
+        client_message: dict,
+        parameters: dict = {},
     ):
         """Send a message to the client."""
         session_id = client_message["id"]
         self.clients[session_id].server_seq += 1
 
-        self.logger.info(f"[{session_id}] Server sending message with type {type}")
-        await websocket.send_json(
-            {
-                "version": "2",
-                "type": type,
-                "seq": self.clients[session_id].server_seq,
-                "clientseq": client_message["seq"],
-                "id": session_id,
-                "parameters": parameters,
-            }
-        )
+        server_message = {
+            "version": "2",
+            "type": type,
+            "seq": self.clients[session_id].server_seq,
+            "clientseq": client_message["seq"],
+            "id": session_id,
+            "parameters": parameters,
+        }
+
+        self.logger.info(f"[{session_id}] Server sending message with type {type}.")
+        self.logger.debug(server_message)
+        await websocket.send_json(server_message)
 
     async def handle_incoming_message(self, message: dict):
         """Handle incoming messages (JSON)."""
@@ -250,6 +272,7 @@ class WebsocketServer:
         """
         parameters = message["parameters"]
         conversation_id = parameters["conversationId"]
+        ani = parameters["participant"]["ani"]
         ani_name = parameters["participant"]["aniName"]
         dnis = parameters["participant"]["dnis"]
         session_id = message["id"]
@@ -259,14 +282,15 @@ class WebsocketServer:
         # Handle connection probe
         # See https://developer.genesys.cloud/devapps/audiohook/patterns-and-practices#connection-probe
         if conversation_id == "00000000-0000-0000-0000-000000000000":
-            self.handle_connection_probe(message)
+            await self.handle_connection_probe(message)
             return
 
         self.logger.info(
-            f"[{session_id}] Session opened with conversation ID: {conversation_id}, ANI Name: {ani_name}, DNIS: {dnis}, Position: {position}"
+            f"[{session_id}] Session opened with conversation ID: {conversation_id}, ani: {ani}, ANI Name: {ani_name}, DNIS: {dnis}, Position: {position}"
         )
         self.logger.info(f"[{session_id}] Available media: {media}")
 
+        self.clients[session_id].ani = ani
         self.clients[session_id].ani_name = ani_name
         self.clients[session_id].dnis = dnis
         self.clients[session_id].conversation_id = conversation_id
@@ -321,57 +345,62 @@ class WebsocketServer:
         session_id = message["id"]
 
         # Close audio buffer (and recognition) if the session is ended
-        self.clients[session_id].audio_buffer.close()
+        if self.clients[session_id].audio_buffer:
+            self.clients[session_id].audio_buffer.close()
 
-        if parameters["reason"] == CloseReason.END:
-            self.logger.info(self.clients[session_id].transcript)
+        if (
+            parameters["reason"] == CloseReason.END
+        ):  # TODO Fix check for connection probe
+            if self.clients[session_id].media:
+                self.logger.info(self.clients[session_id].transcript)
 
-            await self.send_event(
-                event=AzureGenesysEvent.TRANSCRIPT_AVAILABLE,
-                session_id=session_id,
-                message={"transcript": self.clients[session_id].transcript},
-            )
-
-            # Save WAV file from raw audio buffer
-            # TODO retrieve raw bytes from PushAudioInputStream to avoid saving two buffers
-            wav_file = convert_to_wav(
-                format=self.clients[session_id].media["format"],
-                audio_data=self.clients[session_id].raw_audio_buffer,
-                channels=len(self.clients[session_id].media["channels"]),
-                sample_width=2,  # 16 bits per sample
-                frame_rate=self.clients[session_id].media["rate"],
-            )
-
-            # Upload the WAV file to Azure Blob Storage
-            if self.blob_service_client:
-                self.logger.debug(
-                    f"[{session_id}] Saving WAV file to Azure Blob Storage ({session_id}.wav)."
+                await self.send_event(
+                    event=AzureGenesysEvent.TRANSCRIPT_AVAILABLE,
+                    session_id=session_id,
+                    message={"transcript": self.clients[session_id].transcript},
                 )
 
-                try:
-                    await upload_blob_file(
-                        blob_service_client=self.blob_service_client,
-                        container_name=os.getenv(
-                            "AZURE_STORAGE_ACCOUNT_CONTAINER", "audio"
-                        ),
-                        file_name=f"{session_id}.wav",
-                        data=wav_file,
-                        content_type="audio/wav",
+                # Save WAV file from raw audio buffer
+                # TODO retrieve raw bytes from PushAudioInputStream to avoid saving two buffers
+                if self.clients[session_id].raw_audio_buffer:
+                    wav_file = convert_to_wav(
+                        format=self.clients[session_id].media["format"],
+                        audio_data=self.clients[session_id].raw_audio_buffer,
+                        channels=len(self.clients[session_id].media["channels"]),
+                        sample_width=2,  # 16 bits per sample
+                        frame_rate=self.clients[session_id].media["rate"],
                     )
 
-                    self.logger.info(
-                        f"[{session_id}] WAV file saved to Azure Blob Storage: {session_id}.wav"
+                # Upload the WAV file to Azure Blob Storage
+                if self.blob_service_client:
+                    self.logger.debug(
+                        f"[{session_id}] Saving WAV file to Azure Blob Storage ({session_id}.wav)."
                     )
 
-                    await self.send_event(
-                        event=AzureGenesysEvent.RECORDING_AVAILABLE,
-                        session_id=session_id,
-                        message={"filename": f"{session_id}.wav"},
-                    )
-                except Exception as e:
-                    self.logger.error(
-                        f"[{session_id}] Failed to upload WAV file to Azure Blob Storage: {e}"
-                    )
+                    try:
+                        await upload_blob_file(
+                            blob_service_client=self.blob_service_client,
+                            container_name=os.getenv(
+                                "AZURE_STORAGE_ACCOUNT_CONTAINER", "audio"
+                            ),
+                            file_name=f"{session_id}.wav",
+                            data=wav_file,
+                            content_type="audio/wav",
+                        )
+
+                        self.logger.info(
+                            f"[{session_id}] WAV file saved to Azure Blob Storage: {session_id}.wav"
+                        )
+
+                        await self.send_event(
+                            event=AzureGenesysEvent.RECORDING_AVAILABLE,
+                            session_id=session_id,
+                            message={"filename": f"{session_id}.wav"},
+                        )
+                    except Exception as e:
+                        self.logger.error(
+                            f"[{session_id}] Failed to upload WAV file to Azure Blob Storage: {e}"
+                        )
 
             await self.send_message(
                 type=ServerMessageType.CLOSED, client_message=message
@@ -390,6 +419,7 @@ class WebsocketServer:
         This connection probe and synthetic session helps flagging integration configuration issues and verify minimal server compliance without needing manual test calls.
         """
         session_id = message["id"]
+
         self.logger.info(
             f"[{session_id}] Connection probe. Conversation should not be logged and transcribed."
         )
@@ -400,14 +430,6 @@ class WebsocketServer:
             parameters={
                 "startPaused": False,
                 "media": [],
-            },
-        )
-
-        await self.send_message(
-            type=ClientMessageType.CLOSE,
-            client_message=message,
-            parameters={
-                "reason": CloseReason.END,
             },
         )
 
@@ -434,7 +456,7 @@ class WebsocketServer:
                 samples_per_second=media["rate"],
                 bits_per_sample=8,
                 channels=len(media["channels"]),
-                wave_stream_format=speechsdk.AudioStreamWaveFormat.PCM,
+                wave_stream_format=speechsdk.AudioStreamWaveFormat.MULAW,
             )
 
             stream = speechsdk.audio.PushAudioInputStream(stream_format=audio_format)
@@ -472,42 +494,79 @@ class WebsocketServer:
             event_data_batch.add(event_data)
             await self.producer_client.send_batch(event_data_batch)
 
+            self.logger.debug(f"[{session_id}] Sending event: {event_data}")
+
     async def recognize_speech(self, session_id: str):
         """Recognize speech from audio buffer using Azure Speech to Text."""
 
-        if os.getenv("AZURE_SPEECH_KEY"):
+        # Determine speech configuration based on channel count and authentication method
+        # Use multichannel (preview) for stereo calls
+        is_multichannel = len(self.clients[session_id].media["channels"]) > 1
+        region = os.environ["AZURE_SPEECH_REGION"]
+        endpoint = (
+            f"wss://{region}.stt.speech.microsoft.com/speech/recognition/conversation/cognitiveservices/v1?setfeature=multichannel2"
+            if is_multichannel
+            else None
+        )
+
+        # Create speech config with appropriate authentication (speech key vs managed identity)
+        if speech_key := os.getenv("AZURE_SPEECH_KEY"):
             speech_config = speechsdk.SpeechConfig(
-                subscription=os.environ["AZURE_SPEECH_KEY"],
-                region=os.environ["AZURE_SPEECH_REGION"],
+                subscription=speech_key,
+                region=None if is_multichannel else region,
+                endpoint=endpoint,
             )
         else:
+            auth_token = get_speech_token(os.environ["AZURE_SPEECH_RESOURCE_ID"])
             speech_config = speechsdk.SpeechConfig(
-                auth_token=get_speech_token(os.environ["AZURE_SPEECH_RESOURCE_ID"]),
-                region=os.environ["AZURE_SPEECH_REGION"],
+                auth_token=auth_token,
+                region=None if is_multichannel else region,
+                endpoint=endpoint,
             )
 
         loop = asyncio.get_running_loop()
         recognition_done = asyncio.Event()
 
         # Speech configuration
+        languages = os.getenv("AZURE_SPEECH_LANGUAGES", "en-US").split(",")
+
+        if len(languages) > 1:
+            auto_detect_source_language_config = None
+            speech_config.speech_recognition_language = languages[
+                0
+            ]  # Set to the only available language
+        else:
+            auto_detect_source_language_config = (
+                speechsdk.languageconfig.AutoDetectSourceLanguageConfig(
+                    languages=["en-US", "nl-NL"]
+                )
+            )
+            speech_config.set_property(
+                property_id=speechsdk.PropertyId.SpeechServiceConnection_LanguageIdMode,
+                value="Continuous",
+            )
+
         speech_config.output_format = speechsdk.OutputFormat.Detailed
-        speech_config.speech_recognition_language = "en-US"  # TODO add continuous LID
         speech_config.request_word_level_timestamps()
         speech_config.enable_audio_logging()
-        speech_config.enable_dictation()
         speech_config.set_profanity(speechsdk.ProfanityOption.Removed)
+        # speech_config.set_property(
+        #     speechsdk.PropertyId.SpeechServiceConnection_InitialSilenceTimeoutMs,
+        #     "45000",
+        # )
+
+        # Preview: only supported for en-us
         speech_config.set_property(
             speechsdk.PropertyId.Speech_SegmentationStrategy, "Semantic"
         )
-
-        # TODO implement conversation transcriber for mono streams
-        # speech_config.set_property(property_id=speechsdk.PropertyId.SpeechServiceResponse_DiarizeIntermediateResults, value='true')
 
         audio_config = speechsdk.audio.AudioConfig(
             stream=self.clients[session_id].audio_buffer
         )
         speech_recognizer = speechsdk.SpeechRecognizer(
-            speech_config=speech_config, audio_config=audio_config
+            speech_config=speech_config,
+            audio_config=audio_config,
+            auto_detect_source_language_config=auto_detect_source_language_config,
         )
 
         # Phrase list
@@ -519,28 +578,54 @@ class WebsocketServer:
         # Connect callbacks to the events fired by the speech recognizer
         def recognizing_cb(event: speechsdk.SpeechRecognitionEventArgs):
             """Callback that continuously logs the recognized speech."""
-            self.logger.info(f"[{session_id}] Recognizing {event.result.text}")
+            self.logger.info(f"[{session_id}] Recognizing: {event.result.text}")
             self.logger.debug(f"[{session_id}] Recognizing JSON: {event.result.json}")
 
         def recognized_cb(event: speechsdk.SpeechRecognitionEventArgs):
             """Callback that logs the recognized speech once the recognition is done."""
-            self.logger.info(f"[{session_id}] Recognized {event.result.text}")
+            self.logger.info(f"[{session_id}] Recognized: {event.result.text}")
             self.logger.debug(f"[{session_id}] Recognized JSON: {event.result.json}")
-            self.clients[session_id].transcript += event.result.text
+            json_data = json.loads(event.result.json)
 
+            if json_data["RecognitionStatus"] == "InitialSilenceTimeout":
+                self.logger.warning(
+                    f"[{session_id}] Initial silence timeout. No speech detected."
+                )
+                return
+
+            text = event.result.text
+
+            # Capitalize first letter and add period if missing proper sentence ending
+            if text and not any(
+                text.endswith(end) for end in [".", "!", "?", ":", ";"]
+            ):
+                text = text[0].upper() + text[1:] + "."
+            elif text and not text[0].isupper():
+                text = text[0].upper() + text[1:]
+
+            # Store transcript in local memory
+            self.clients[session_id].transcript.append(
+                {
+                    "channel": json_data["Channel"] if is_multichannel else None,
+                    "text": text,
+                }
+            )
+
+            # Send transcript to Event Hub
             asyncio.run_coroutine_threadsafe(
                 self.send_event(
                     event=AzureGenesysEvent.PARTIAL_TRANSCRIPT,
                     session_id=session_id,
                     message={
-                        "transcript": event.result.text,
-                        "data": event.result.json,
+                        "transcript": text,
+                        "channel": json_data["Channel"] if is_multichannel else None,
+                        "data": json_data,
                     },
                 ),
                 loop,
             )
 
-        def session_stopped_cb(event):
+        def session_stopped_cb(event: speechsdk.SpeechRecognitionCanceledEventArgs):
             """Callback that signals to stop continuous recognition upon receiving an event."""
             self.logger.info(f"[{session_id}] Session stopped: {event.session_id}")
             recognition_done.set()
