@@ -549,13 +549,10 @@ class WebsocketServer:
         speech_config.output_format = speechsdk.OutputFormat.Detailed
         speech_config.request_word_level_timestamps()
         speech_config.enable_audio_logging()
-        speech_config.set_profanity(speechsdk.ProfanityOption.Removed)
-        # speech_config.set_property(
-        #     speechsdk.PropertyId.SpeechServiceConnection_InitialSilenceTimeoutMs,
-        #     "45000",
-        # )
+        speech_config.set_profanity(speechsdk.ProfanityOption.Masked)
 
-        # Preview: only supported for en-us
+        # Enable Semantic Segmentation (preview) (en-us only)
+        # https://learn.microsoft.com/en-us/azure/ai-services/speech-service/how-to-recognize-speech?pivots=programming-language-python#semantic-segmentation
         speech_config.set_property(
             speechsdk.PropertyId.Speech_SegmentationStrategy, "Semantic"
         )
@@ -569,7 +566,8 @@ class WebsocketServer:
             auto_detect_source_language_config=auto_detect_source_language_config,
         )
 
-        # Phrase list
+        # Enable phrase list
+        # https://learn.microsoft.com/en-us/azure/ai-services/speech-service/improve-accuracy-phrase-list?tabs=terminal&pivots=programming-language-python
         phrase_list_grammar = speechsdk.PhraseListGrammar.from_recognizer(
             speech_recognizer
         )
