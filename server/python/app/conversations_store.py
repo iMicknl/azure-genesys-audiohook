@@ -52,6 +52,18 @@ class CosmosDBConversationsStore(ConversationsStore):
             self._container = await self._db.create_container_if_not_exists(
                 id=self.container_name,
                 partition_key=PartitionKey(path="/id"),
+                indexing_policy={
+                    "indexingMode": "consistent",
+                    "includedPaths": [
+                        {"path": "/id/?"},
+                        {"path": "/session_id/?"},
+                        {"path": "/active/?"},
+                        {"path": "/ani/?"},
+                        {"path": "/ani_name/?"},
+                        {"path": "/dnis/?"},
+                    ],
+                    "excludedPaths": [{"path": "/*"}],
+                },
             )
         return self._container
 
