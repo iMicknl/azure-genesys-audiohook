@@ -198,8 +198,6 @@ class WebsocketServer:
             if session_id in self.active_ws_sessions:
                 del self.active_ws_sessions[session_id]
 
-            raise
-
     async def disconnect(self, reason: DisconnectReason, message: str, code: int):
         """Disconnect the websocket connection gracefully."""
         self.logger.warning(message)
