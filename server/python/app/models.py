@@ -30,19 +30,27 @@ class ServerMessageBase(MessageBase):
 class ClientSession:
     """Dataclass to store client session details"""
 
+    session_id: str
+    active: bool = True
     ani: str | None = None
     ani_name: str | None = None
     dnis: str | None = None
     conversation_id: str | None = None
-    client_seq: int = 0
-    server_seq: int = 0
     rtt: list[int] = field(default_factory=list)
     last_rtt: int | None = None
     media: dict | None = None
+    transcript: list[dict] = field(default_factory=list)
+
+
+@dataclass(kw_only=True)
+class TemporaryClientSession:
+    """Temporary in-memory storage for client sessions"""
+
     raw_audio_buffer: bytes | None = None
     audio_buffer: speechsdk.audio.PushAudioInputStream | None = None
     recognize_task: asyncio.Task | None = None
-    transcript: list[dict] = field(default_factory=list)
+    client_seq: int = 0
+    server_seq: int = 0
 
 
 @dataclass(kw_only=True)
@@ -52,3 +60,11 @@ class HealthCheckResponse:
     status: str
     connected_clients: int
     client_sessions: list[ClientSession]
+
+
+@dataclass(kw_only=True)
+class ConversationsResponse:
+    """Dataclass to model Conversations response"""
+
+    count: int
+    conversations: list[ClientSession] = field(default_factory=list)
