@@ -82,11 +82,25 @@ class WebsocketServer:
             await self.producer_client.close()
 
     async def health_check(self):
-        """Health check endpoint"""
+        """
+        Health check endpoint
+
+        https://learn.microsoft.com/en-us/azure/container-apps/health-probes
+        """
+
+        # TODO: Implement health check logic
+        # For example, check if the database and STT connection is healthy
+        # or if the external services are reachable.
+
         return {"status": "online"}
 
     async def get_conversations(self):
-        """Retrieve (active) conversations."""
+        """
+        Retrieve conversations.
+        """
+        # TODO implement pagination
+        # TODO implement filtering (active/ended)
+
         # TODO this won't show the right details when used with multiple workers (each worker will have its own memory storage)
         # Remove audio buffer from the response to avoid serialization issues
         connected_clients = {
