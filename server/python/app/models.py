@@ -1,12 +1,11 @@
 import asyncio
-from dataclasses import dataclass, field
 from typing import Any
 
 import azure.cognitiveservices.speech as speechsdk
+from pydantic import BaseModel, ConfigDict, Field
 
 
-@dataclass
-class MessageBase:
+class MessageBase(BaseModel):
     version: str
     id: str
     type: str
@@ -14,37 +13,37 @@ class MessageBase:
     parameters: dict[str, Any]
 
 
-@dataclass
 class ClientMessageBase(MessageBase):
     serverseq: int
     position: str
 
 
-@dataclass
 class ServerMessageBase(MessageBase):
     clientseq: int
     position: str
 
 
-@dataclass(kw_only=True)
-class Conversation:
-    """Dataclass to store conversation details"""
+class Conversation(BaseModel):
+    """Pydantic model to store conversation details"""
 
+    model_config = ConfigDict(extra="ignore")
+
+    id: str
     session_id: str
-    conversation_id: str
     active: bool = True
     ani: str
     ani_name: str
     dnis: str
-    media: dict  # todo type
-    rtt: list[int] = field(default_factory=list)
-    last_rtt: int | None = None
-    transcript: list[dict] = field(default_factory=list)
+    media: dict[str, Any]
+    rtt: list[str] = Field(default_factory=list)
+    last_rtt: str | None = None
+    transcript: list[dict[str, Any]] = Field(default_factory=list)
 
 
-@dataclass(kw_only=True)
-class WebSocketSessionStorage:
+class WebSocketSessionStorage(BaseModel):
     """Temporary in-memory storage for WebSocket session state"""
+
+    model_config = ConfigDict(arbitrary_types_allowed=True)
 
     conversation_id: str | None = None
     raw_audio_buffer: bytes | None = None
@@ -54,16 +53,14 @@ class WebSocketSessionStorage:
     server_seq: int = 0
 
 
-@dataclass(kw_only=True)
-class HealthCheckResponse:
-    """Dataclass to model Health Check response"""
+class HealthCheckResponse(BaseModel):
+    """Pydantic model to model Health Check response"""
 
     status: str
 
 
-@dataclass(kw_only=True)
-class ConversationsResponse:
-    """Dataclass to model Conversations response"""
+class ConversationsResponse(BaseModel):
+    """Pydantic model to model Conversations response"""
 
     count: int
-    conversations: list[Conversation] = field(default_factory=list)
+    conversations: list[Conversation] = Field(default_factory=list)

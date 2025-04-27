@@ -1,5 +1,4 @@
 import asyncio
-import dataclasses
 import json
 import logging
 import os
@@ -100,7 +99,7 @@ class WebsocketServer:
         # TODO: Implement health check logic
         # For example, check if the database and STT connection is healthy
         # or if the external services are reachable.
-        return dataclasses.asdict(HealthCheckResponse(status="online")), 200
+        return HealthCheckResponse(status="online").model_dump(), 200
 
     async def get_conversations(self) -> Any:
         """
@@ -110,12 +109,10 @@ class WebsocketServer:
         # TODO implement filtering (active/ended)
         conversations = await self.conversations_store.list()
 
-        return dataclasses.asdict(
-            ConversationsResponse(
-                count=len(conversations),
-                conversations=conversations,
-            )
-        ), 200
+        return ConversationsResponse(
+            count=len(conversations),
+            conversations=conversations,
+        ).model_dump(), 200
 
     async def get_conversation(self, conversation_id) -> Any:
         """
@@ -123,7 +120,7 @@ class WebsocketServer:
         """
         conversation = await self.conversations_store.get(conversation_id)
         if conversation:
-            return dataclasses.asdict(conversation), 200
+            return conversation.model_dump(), 200
         return {
             "error": {
                 "code": "unknown_conversation",
@@ -192,10 +189,14 @@ class WebsocketServer:
 
             # Note: AudioHook currently does not support re-establishing session connections.
             # Set the client session to inactive and remove the temporary client session
-            conversation = await self.conversations_store.get(session_id)
+            ws_session = self.active_ws_sessions[session_id]
+            conversation = await self.conversations_store.get(
+                ws_session.conversation_id
+            )
+
             if conversation:
                 conversation.active = False
-                await self.conversations_store.set(session_id, conversation)
+                await self.conversations_store.set(conversation)
             if session_id in self.active_ws_sessions:
                 del self.active_ws_sessions[session_id]
 
@@ -282,7 +283,7 @@ class WebsocketServer:
         if conversation and message["parameters"].get("rtt"):
             conversation.rtt.append(message["parameters"]["rtt"])
             conversation.last_rtt = message["parameters"]["rtt"]
-            await self.conversations_store.set(ws_session.conversation_id, conversation)
+            await self.conversations_store.set(conversation)
 
     async def handle_open_message(self, message: dict):
         """
@@ -324,20 +325,20 @@ class WebsocketServer:
             media[0],
         )
 
-        # Store conversation_id in the temp session
+        # Store conversation_id in the temp session storage
         ws_session = self.active_ws_sessions[session_id]
         ws_session.conversation_id = conversation_id
 
         # Save/update persistent state
         conversation = Conversation(
+            id=conversation_id,
             session_id=session_id,
-            conversation_id=conversation_id,
             ani=ani,
             ani_name=ani_name,
             dnis=dnis,
             media=selected_media,
         )
-        await self.conversations_store.set(conversation_id, conversation)
+        await self.conversations_store.set(conversation)
 
         await self.send_message(
             type=ServerMessageType.OPENED,
@@ -388,7 +389,6 @@ class WebsocketServer:
 
         if parameters["reason"] == CloseReason.END:
             if conversation and conversation.media:
-                self.logger.info(conversation.transcript)
                 await self.send_event(
                     event=AzureGenesysEvent.TRANSCRIPT_AVAILABLE,
                     session_id=session_id,
@@ -446,7 +446,7 @@ class WebsocketServer:
             # Set the client session to inactive and remove the temporary client session
             if conversation:
                 conversation.active = False
-                await self.conversations_store.set(conversation_id, conversation)
+                await self.conversations_store.set(conversation)
             if session_id in self.active_ws_sessions:
                 del self.active_ws_sessions[session_id]
 
@@ -482,12 +482,11 @@ class WebsocketServer:
 
         position=\frac{samplesProcessed}{sampleRate}
         """
-        ws_session = self.active_ws_sessions.get(session_id)
-        if not ws_session or not ws_session.conversation_id:
-            return
+        ws_session = self.active_ws_sessions[session_id]
         conversation_id = ws_session.conversation_id
         conversation = await self.conversations_store.get(conversation_id)
-        media = conversation.media if conversation else None
+        media = conversation.media
+
         if ws_session.audio_buffer is None:
             self.logger.info(
                 f"[{session_id}] type {media['type']}, format {media['format']}, rate {media['rate']}, channels {len(media['channels'])}"
@@ -666,7 +665,7 @@ class WebsocketServer:
                             "text": text,
                         }
                     )
-                    await self.conversations_store.set(conversation_id, conversation)
+                    await self.conversations_store.set(conversation)
 
             asyncio.run_coroutine_threadsafe(update_transcript(), loop)
 
