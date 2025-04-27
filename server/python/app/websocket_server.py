@@ -274,6 +274,8 @@ class WebsocketServer:
         parameters = message["parameters"]
         session_id = message["id"]
 
+        self.logger.debug(f"[{session_id}] Received ping message: {parameters}")
+
         if parameters.get("rtt"):
             self.logger.info(
                 f"[{session_id}] Received ping with RTT: {parameters['rtt']}"
@@ -469,6 +471,7 @@ class WebsocketServer:
         position=\frac{samplesProcessed}{sampleRate}
         """
         self.logger.debug(f"[{session_id}] Received audio data. Byte size: {len(data)}")
+
         media = self.clients[session_id].media
         temp = self.temp_clients[session_id]
         if temp.audio_buffer is None:
