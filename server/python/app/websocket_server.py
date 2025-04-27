@@ -398,11 +398,11 @@ class WebsocketServer:
                 # TODO retrieve raw bytes from PushAudioInputStream to avoid saving two buffers
                 if temp_session and temp_session.raw_audio_buffer:
                     wav_file = convert_to_wav(
-                        format=self.clients[session_id].media["format"],
+                        format=client.media["format"],
                         audio_data=temp_session.raw_audio_buffer,
-                        channels=len(self.clients[session_id].media["channels"]),
+                        channels=len(client.media["channels"]),
                         sample_width=2,
-                        frame_rate=self.clients[session_id].media["rate"],
+                        frame_rate=client.media["rate"],
                     )
 
                 # Upload the WAV file to Azure Blob Storage
