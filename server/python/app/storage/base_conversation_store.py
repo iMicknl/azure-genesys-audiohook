@@ -22,3 +22,15 @@ class ConversationStore:
 
     async def get_by_session_id(self, session_id: str) -> Conversation | None:
         raise NotImplementedError
+
+    async def set_active(self, conversation_id: str, active: bool):
+        """Set the 'active' status of a conversation."""
+        raise NotImplementedError
+
+    async def append_rtt(self, conversation_id: str, rtt: str):
+        """Append an RTT entry to the conversation's rtt list."""
+        raise NotImplementedError
+
+    async def append_transcript(self, conversation_id: str, item: dict):
+        """Append an item to the conversation's transcript list."""
+        raise NotImplementedError

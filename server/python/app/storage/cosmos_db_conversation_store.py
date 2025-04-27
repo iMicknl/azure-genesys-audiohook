@@ -87,3 +87,29 @@ class CosmosDBConversationStore(ConversationStore):
         async for item in items:
             return Conversation(**item)
         return None
+
+    async def set_active(self, conversation_id: str, active: bool):
+        container = await self._get_container()
+
+        await container.patch_item(
+            conversation_id,
+            partition_key=conversation_id,
+            patch_operations=[{"op": "replace", "path": "/active", "value": active}],
+        )
+
+    async def append_rtt(self, conversation_id: str, rtt: str):
+        container = await self._get_container()
+
+        await container.patch_item(
+            conversation_id,
+            partition_key=conversation_id,
+            patch_operations=[{"op": "add", "path": "/rtt/-", "value": rtt}],
+        )
+
+    async def append_transcript(self, conversation_id: str, item: dict):
+        container = await self._get_container()
+        await container.patch_item(
+            conversation_id,
+            partition_key=conversation_id,
+            patch_operations=[{"op": "add", "path": "/transcript/-", "value": item}],
+        )

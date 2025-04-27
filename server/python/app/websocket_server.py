@@ -191,13 +191,7 @@ class WebsocketServer:
             # Note: AudioHook currently does not support re-establishing session connections.
             # Set the client session to inactive and remove the temporary client session
             ws_session = self.active_ws_sessions[session_id]
-            conversation = await self.conversations_store.get(
-                ws_session.conversation_id
-            )
-
-            if conversation:
-                conversation.active = False
-                await self.conversations_store.set(conversation)
+            await self.conversations_store.set_active(ws_session.conversation_id, False)
             if session_id in self.active_ws_sessions:
                 del self.active_ws_sessions[session_id]
 
@@ -280,11 +274,11 @@ class WebsocketServer:
 
         session_id = message["id"]
         ws_session = self.active_ws_sessions[session_id]
-        conversation = await self.conversations_store.get(ws_session.conversation_id)
-        if conversation and message["parameters"].get("rtt"):
-            conversation.rtt.append(message["parameters"]["rtt"])
-            conversation.last_rtt = message["parameters"]["rtt"]
-            await self.conversations_store.set(conversation)
+
+        if message["parameters"].get("rtt"):
+            await self.conversations_store.append_rtt(
+                ws_session.conversation_id, message["parameters"]["rtt"]
+            )
 
     async def handle_open_message(self, message: dict):
         """
@@ -443,11 +437,8 @@ class WebsocketServer:
 
             await websocket.close(1000)
 
-            # TODO store session history in database, before removing
             # Set the client session to inactive and remove the temporary client session
-            if conversation:
-                conversation.active = False
-                await self.conversations_store.set(conversation)
+            await self.conversations_store.set_active(conversation_id, False)
             if session_id in self.active_ws_sessions:
                 del self.active_ws_sessions[session_id]
 
@@ -654,19 +645,15 @@ class WebsocketServer:
             # Store transcript in persistent storage
             async def update_transcript():
                 ws_session = self.active_ws_sessions[session_id]
-                conversation = await self.conversations_store.get(
-                    ws_session.conversation_id
+
+                transcript_item = {
+                    "channel": json_data["Channel"] if is_multichannel else None,
+                    "text": text,
+                }
+
+                await self.conversations_store.append_transcript(
+                    ws_session.conversation_id, transcript_item
                 )
-                if conversation:
-                    conversation.transcript.append(
-                        {
-                            "channel": json_data["Channel"]
-                            if is_multichannel
-                            else None,
-                            "text": text,
-                        }
-                    )
-                    await self.conversations_store.set(conversation)
 
             asyncio.run_coroutine_threadsafe(update_transcript(), loop)
 
@@ -676,7 +663,7 @@ class WebsocketServer:
                     event=AzureGenesysEvent.PARTIAL_TRANSCRIPT,
                     session_id=session_id,
                     message={
-                        "transcript": text,
+                        "text": text,
                         "channel": json_data["Channel"] if is_multichannel else None,
                         "data": json_data,
                     },

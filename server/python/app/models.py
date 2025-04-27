@@ -36,7 +36,6 @@ class Conversation(BaseModel):
     dnis: str
     media: dict[str, Any]
     rtt: list[str] = Field(default_factory=list)
-    last_rtt: str | None = None
     transcript: list[dict[str, Any]] = Field(default_factory=list)
 
 

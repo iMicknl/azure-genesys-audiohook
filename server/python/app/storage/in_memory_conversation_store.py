@@ -30,3 +30,21 @@ class InMemoryConversationStore(ConversationStore):
             if conversation.session_id == session_id:
                 return conversation
         return None
+
+    async def set_active(self, conversation_id: str, active: bool):
+        conversation = await self.get(conversation_id)
+        if conversation:
+            conversation.active = active
+            await self.set(conversation)
+
+    async def append_rtt(self, conversation_id: str, rtt: str):
+        conversation = await self.get(conversation_id)
+        if conversation:
+            conversation.rtt.append(rtt)
+            await self.set(conversation)
+
+    async def append_transcript(self, conversation_id: str, item: dict):
+        conversation = await self.get(conversation_id)
+        if conversation:
+            conversation.transcript.append(item)
+            await self.set(conversation)
