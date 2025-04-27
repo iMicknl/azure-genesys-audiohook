@@ -33,7 +33,6 @@ from .utils.storage import upload_blob_file
 class WebsocketServer:
     """Websocket server class"""
 
-    clients: dict[str, Conversation] = {}
     active_ws_sessions: dict[str, WebSocketSessionStorage] = {}
     logger: logging.Logger = logging.getLogger(__name__)
     blob_service_client: BlobServiceClient | None = None
