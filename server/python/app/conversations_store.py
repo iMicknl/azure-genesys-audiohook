@@ -9,6 +9,12 @@ from .models import Conversation
 
 
 class ConversationsStore:
+    """
+    Interface for storing and retrieving conversations.
+    This is an abstract class that defines the methods for
+    getting, setting, deleting, and listing conversations.
+    """
+
     async def get(self, conversation_id: str) -> Optional[Conversation]:
         raise NotImplementedError
 
