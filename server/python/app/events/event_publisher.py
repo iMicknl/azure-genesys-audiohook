@@ -37,7 +37,7 @@ class EventPublisher:
     async def send_event(
         self,
         event_type: str,
-        session_id: str,
+        conversation_id: str,
         message: Dict[str, Any],
         properties: Optional[Dict[str, str]] = None,
     ):
@@ -45,9 +45,12 @@ class EventPublisher:
         event_data = EventData(json.dumps(message))
         event_data.properties = {
             "event-type": event_type,
-            "session-id": session_id,
+            "conversation-id": conversation_id,
         }
         if properties:
             event_data.properties.update(properties)
+
         event_data_batch.add(event_data)
+
+        # TODO Implement batching and queueing
         await self.producer_client.send_batch(event_data_batch)
