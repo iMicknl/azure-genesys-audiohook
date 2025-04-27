@@ -54,7 +54,7 @@ class WebsocketServer:
         self.app.route("/api/conversations")(self.get_conversations)
         self.app.route("/api/conversation/<conversation_id>")(self.get_conversation)
 
-        self.app.websocket("/ws")(self.ws)
+        self.app.websocket("/audiohook/ws")(self.ws)
 
     async def create_connections(self):
         """Create connections before serving"""
