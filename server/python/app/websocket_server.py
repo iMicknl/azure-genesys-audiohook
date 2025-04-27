@@ -369,9 +369,9 @@ class WebsocketServer:
         session_id = message["id"]
 
         # Close audio buffer (and recognition) if the session is ended
-        temp = self.temp_clients.get(session_id)
-        if temp and temp.audio_buffer:
-            temp.audio_buffer.close()
+        temp_session = self.temp_clients.get(session_id)
+        if temp_session and temp_session.audio_buffer:
+            temp_session.audio_buffer.close()
 
         if parameters["reason"] == CloseReason.END:
             if self.clients[session_id].media:
@@ -385,10 +385,10 @@ class WebsocketServer:
 
                 # Save WAV file from raw audio buffer
                 # TODO retrieve raw bytes from PushAudioInputStream to avoid saving two buffers
-                if temp and temp.raw_audio_buffer:
+                if temp_session and temp_session.raw_audio_buffer:
                     wav_file = convert_to_wav(
                         format=self.clients[session_id].media["format"],
-                        audio_data=temp.raw_audio_buffer,
+                        audio_data=temp_session.raw_audio_buffer,
                         channels=len(self.clients[session_id].media["channels"]),
                         sample_width=2,
                         frame_rate=self.clients[session_id].media["rate"],
@@ -473,8 +473,8 @@ class WebsocketServer:
         self.logger.debug(f"[{session_id}] Received audio data. Byte size: {len(data)}")
 
         media = self.clients[session_id].media
-        temp = self.temp_clients[session_id]
-        if temp.audio_buffer is None:
+        temp_session = self.temp_clients[session_id]
+        if temp_session.audio_buffer is None:
             self.logger.info(
                 f"[{session_id}] type {media['type']}, format {media['format']}, rate {media['rate']}, channels {len(media['channels'])}"
             )
@@ -487,15 +487,17 @@ class WebsocketServer:
             )
 
             stream = speechsdk.audio.PushAudioInputStream(stream_format=audio_format)
-            temp.audio_buffer = stream
-            temp.raw_audio_buffer = bytearray()
+            temp_session.audio_buffer = stream
+            temp_session.raw_audio_buffer = bytearray()
 
             # Start the synchronous speech recognition as a asyncio task
-            temp.recognize_task = asyncio.create_task(self.recognize_speech(session_id))
+            temp_session.recognize_task = asyncio.create_task(
+                self.recognize_speech(session_id)
+            )
 
         # Append the buffers to the audio stream
-        temp.audio_buffer.write(data)
-        temp.raw_audio_buffer += data
+        temp_session.audio_buffer.write(data)
+        temp_session.raw_audio_buffer += data
 
     async def send_event(
         self,
