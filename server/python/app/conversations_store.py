@@ -1,0 +1,125 @@
+import dataclasses
+import os
+from typing import List, Optional
+
+from azure.cosmos import PartitionKey
+from azure.cosmos.aio import CosmosClient
+
+from .models import ClientSession
+
+
+class ConversationsStore:
+    async def get(self, session_id: str) -> Optional[ClientSession]:
+        raise NotImplementedError
+
+    async def set(self, session_id: str, session: ClientSession):
+        raise NotImplementedError
+
+    async def delete(self, session_id: str):
+        raise NotImplementedError
+
+    async def list(self) -> List[ClientSession]:
+        raise NotImplementedError
+
+    async def get_by_conversation_id(
+        self, conversation_id: str
+    ) -> Optional[ClientSession]:
+        raise NotImplementedError
+
+
+class CosmosDBConversationsStore(ConversationsStore):
+    def __init__(self):
+        endpoint = os.environ["COSMOSDB_ENDPOINT"]
+        key = os.environ["COSMOSDB_KEY"]
+        database_name = os.environ.get("COSMOSDB_DATABASE", "audiohook")
+        container_name = os.environ.get("COSMOSDB_CONTAINER", "conversations")
+        self.client = CosmosClient(endpoint, key)
+        self.database_name = database_name
+        self.container_name = container_name
+        self._db = None
+        self._container = None
+
+    async def _get_container(self):
+        if not self._container:
+            if not self._db:
+                self._db = await self.client.create_database_if_not_exists(
+                    self.database_name
+                )
+            self._container = await self._db.create_container_if_not_exists(
+                id=self.container_name,
+                partition_key=PartitionKey(path="/session_id"),
+            )
+        return self._container
+
+    async def get(self, session_id: str) -> Optional[ClientSession]:
+        container = await self._get_container()
+        try:
+            item = await container.read_item(session_id, partition_key=session_id)
+            return ClientSession(**item)
+        except Exception:
+            return None
+
+    async def set(self, session_id: str, session: ClientSession):
+        container = await self._get_container()
+        data = dataclasses.asdict(session)
+        data["id"] = session_id
+        data["session_id"] = session_id
+        await container.upsert_item(data)
+
+    async def delete(self, session_id: str):
+        container = await self._get_container()
+        await container.delete_item(session_id, partition_key=session_id)
+
+    async def list(self) -> List[ClientSession]:
+        container = await self._get_container()
+        query = "SELECT * FROM c"
+        items = container.query_items(query, enable_cross_partition_query=True)
+        return [ClientSession(**item) async for item in items]
+
+    async def get_by_conversation_id(
+        self, conversation_id: str
+    ) -> Optional[ClientSession]:
+        container = await self._get_container()
+        query = "SELECT * FROM c WHERE c.conversation_id = @conversation_id"
+        params = [{"name": "@conversation_id", "value": conversation_id}]
+        items = container.query_items(
+            query, parameters=params, enable_cross_partition_query=True
+        )
+        async for item in items:
+            return ClientSession(**item)
+        return None
+
+
+class InMemoryConversationsStore(ConversationsStore):
+    def __init__(self):
+        self._store = {}
+
+    async def get(self, session_id: str) -> Optional[ClientSession]:
+        return self._store.get(session_id)
+
+    async def set(self, session_id: str, session: ClientSession):
+        self._store[session_id] = session
+
+    async def delete(self, session_id: str):
+        if session_id in self._store:
+            del self._store[session_id]
+
+    async def list(self) -> List[ClientSession]:
+        return list(self._store.values())
+
+    async def get_by_conversation_id(
+        self, conversation_id: str
+    ) -> Optional[ClientSession]:
+        for session in self._store.values():
+            if session.conversation_id == conversation_id:
+                return session
+        return None
+
+
+def get_conversations_store():
+    """
+    Factory to select CosmosDB or in-memory store based on environment variables.
+    """
+    if os.environ.get("COSMOSDB_ENDPOINT") and os.environ.get("COSMOSDB_KEY"):
+        return CosmosDBConversationsStore()
+    return InMemoryConversationsStore()
