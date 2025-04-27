@@ -105,7 +105,9 @@ class WebsocketServer:
         )
 
     async def get_conversation(self, conversation_id):
-        """Get client session by conversation ID"""
+        """
+        Retrieve a client session by its conversation ID.
+        """
         # Look for client session with matching conversation_id
         for session_id, client in self.clients.items():
             if getattr(client, "conversation_id", None) == conversation_id:
@@ -119,7 +121,12 @@ class WebsocketServer:
                 return dataclasses.asdict(clean_session), 200
 
         # Return 404 if no matching session is found
-        return {"error": "Conversation not found"}, 404
+        return {
+            "error": {
+                "code": "unknown_conversation",
+                "message": f"No session found for conversation ID '{conversation_id}'. Please verify the ID and try again.",
+            }
+        }, 404
 
     async def ws(self):
         """Websocket endpoint"""
