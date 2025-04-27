@@ -16,6 +16,8 @@ dependencies = [
     "uvicorn>=0.30.6",
     "audioop-lts; python_version>='3.13'",
     "azure-eventhub>=5.13.0",
+    "azure-cosmos>=4.9.0",
+    "pydantic>=2.11.3",
 ]
 
 [tool.uv]

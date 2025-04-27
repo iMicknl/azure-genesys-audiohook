@@ -1,5 +1,4 @@
 import asyncio
-import dataclasses
 import json
 import logging
 import os
@@ -9,9 +8,8 @@ import azure.cognitiveservices.speech as speechsdk
 from azure.eventhub import EventData
 from azure.eventhub.aio import EventHubProducerClient
 from azure.storage.blob.aio import BlobServiceClient
-from quart import Quart, websocket
+from quart import Quart, request, websocket
 
-from .audio import convert_to_wav
 from .enums import (
     AzureGenesysEvent,
     ClientMessageType,
@@ -19,20 +17,28 @@ from .enums import (
     DisconnectReason,
     ServerMessageType,
 )
-from .identity import get_azure_credential_async, get_speech_token
-from .models import ClientSession, HealthCheckResponse
-from .storage import upload_blob_file
+from .models import (
+    Conversation,
+    ConversationsResponse,
+    HealthCheckResponse,
+    WebSocketSessionStorage,
+)
+from .storage.base_conversation_store import ConversationStore
+from .storage.conversation_store import get_conversation_store
+from .utils.audio import convert_to_wav
+from .utils.identity import get_azure_credential_async, get_speech_token
+from .utils.storage import upload_blob_file
 
 
 class WebsocketServer:
     """Websocket server class"""
 
-    clients: dict[
-        str, ClientSession
-    ] = {}  # TODO make app stateless, keep state in CosmosDB?
+    clients: dict[str, Conversation] = {}
+    active_ws_sessions: dict[str, WebSocketSessionStorage] = {}
     logger: logging.Logger = logging.getLogger(__name__)
     blob_service_client: BlobServiceClient | None = None
     producer_client: EventHubProducerClient | None = None
+    conversations_store: ConversationStore | None = None
 
     def __init__(self):
         """Initialize the server"""
@@ -40,12 +46,16 @@ class WebsocketServer:
         self.setup_routes()
         self.app.before_serving(self.create_connections)
         self.app.after_serving(self.close_connections)
+        self.conversations_store = None
 
     def setup_routes(self):
         """Setup the routes for the server"""
         self.app.route("/")(self.health_check)
-        self.app.route("/conversation/<conversation_id>")(self.get_conversation)
-        self.app.websocket("/ws")(self.ws)
+
+        self.app.route("/api/conversations")(self.get_conversations)
+        self.app.route("/api/conversation/<conversation_id>")(self.get_conversation)
+
+        self.app.websocket("/audiohook/ws")(self.ws)
 
     async def create_connections(self):
         """Create connections before serving"""
@@ -56,7 +66,7 @@ class WebsocketServer:
         elif account_url := os.getenv("AZURE_STORAGE_ACCOUNT_URL"):
             self.blob_service_client = BlobServiceClient(
                 account_url, credential=get_azure_credential_async()
-            )  # TODO cache DefaultAzureCredential
+            )
 
         if fully_qualified_namespace := os.getenv("AZURE_EVENT_HUB_HOSTNAME"):
             self.producer_client = EventHubProducerClient(
@@ -70,6 +80,8 @@ class WebsocketServer:
                 eventhub_name=os.environ["AZURE_EVENT_HUB_NAME"],
             )
 
+        self.conversations_store = get_conversation_store()
+
     async def close_connections(self):
         """Close connections after serving"""
         if self.blob_service_client:
@@ -78,41 +90,50 @@ class WebsocketServer:
         if self.producer_client:
             await self.producer_client.close()
 
+        if self.conversations_store:
+            await self.conversations_store.close()
+
     async def health_check(self):
-        """Health check endpoint"""
-        # TODO this won't show the right details when used with multiple workers (each worker will have its own memory storage)
-        # Remove audio buffer from the response to avoid serialization issues
-        connected_clients = {
-            session_id: dataclasses.replace(
-                client, audio_buffer=None, raw_audio_buffer=None, recognize_task=None
-            )
-            for session_id, client in self.clients.items()
-        }
+        """
+        Health check endpoint
 
-        return dataclasses.asdict(
-            HealthCheckResponse(
-                status="online",
-                connected_clients=len(connected_clients),
-                client_sessions=connected_clients,
-            )
-        )
+        https://learn.microsoft.com/en-us/azure/container-apps/health-probes
+        """
 
-    async def get_conversation(self, conversation_id):
-        """Get client session by conversation ID"""
-        # Look for client session with matching conversation_id
-        for session_id, client in self.clients.items():
-            if getattr(client, "conversation_id", None) == conversation_id:
-                # Return a single session object without audio buffers and tasks
-                clean_session = dataclasses.replace(
-                    client,
-                    audio_buffer=None,
-                    raw_audio_buffer=None,
-                    recognize_task=None,
-                )
-                return dataclasses.asdict(clean_session), 200
+        # TODO: Implement health check logic
+        # For example, check if the database and STT connection is healthy
+        # or if the external services are reachable.
+        return HealthCheckResponse(status="online").model_dump(), 200
 
-        # Return 404 if no matching session is found
-        return {"error": "Conversation not found"}, 404
+    async def get_conversations(self) -> Any:
+        """
+        Retrieve a list of conversations.
+        """
+        # TODO implement pagination
+        active = request.args.get("active")
+        if isinstance(active, str):
+            active = {"true": True, "false": False}.get(active.lower())
+
+        conversations = await self.conversations_store.list(active=active)
+
+        return ConversationsResponse(
+            count=len(conversations),
+            conversations=conversations,
+        ).model_dump(), 200
+
+    async def get_conversation(self, conversation_id) -> Any:
+        """
+        Retrieve a client session by its conversation ID (not session_id!).
+        """
+        conversation = await self.conversations_store.get(conversation_id)
+        if conversation:
+            return conversation.model_dump(), 200
+        return {
+            "error": {
+                "code": "unknown_conversation",
+                "message": f"No conversation found for conversation ID '{conversation_id}'. Please verify the ID and try again.",
+            }
+        }, 404
 
     async def ws(self):
         """Websocket endpoint"""
@@ -136,8 +157,8 @@ class WebsocketServer:
                 code=1008,
             )
 
-        # Save new client in memory storage
-        self.clients[session_id] = ClientSession()
+        # Save new client in persistent storage
+        self.active_ws_sessions[session_id] = WebSocketSessionStorage()
 
         correlation_id = headers["Audiohook-Correlation-Id"]
         self.logger.info(f"[{session_id}] Accepted websocket connection from {remote}")
@@ -172,8 +193,13 @@ class WebsocketServer:
             self.logger.warning(
                 f"[{session_id}] Websocket connection cancelled/disconnected."
             )
-            # TODO should we delete self.clients[session_id]?
-            raise
+
+            # Note: AudioHook currently does not support re-establishing session connections.
+            # Set the client session to inactive and remove the temporary client session
+            ws_session = self.active_ws_sessions[session_id]
+            await self.conversations_store.set_active(ws_session.conversation_id, False)
+            if session_id in self.active_ws_sessions:
+                del self.active_ws_sessions[session_id]
 
     async def disconnect(self, reason: DisconnectReason, message: str, code: int):
         """Disconnect the websocket connection gracefully."""
@@ -197,17 +223,17 @@ class WebsocketServer:
     ):
         """Send a message to the client."""
         session_id = client_message["id"]
-        self.clients[session_id].server_seq += 1
+        ws_session = self.active_ws_sessions[session_id]
+        ws_session.server_seq += 1
 
         server_message = {
             "version": "2",
             "type": type,
-            "seq": self.clients[session_id].server_seq,
+            "seq": ws_session.server_seq,
             "clientseq": client_message["seq"],
             "id": session_id,
             "parameters": parameters,
         }
-
         self.logger.info(f"[{session_id}] Server sending message with type {type}.")
         self.logger.debug(server_message)
         await websocket.send_json(server_message)
@@ -218,15 +244,16 @@ class WebsocketServer:
         message_type = message["type"]
 
         # Validate sequence number
-        if message["seq"] != self.clients[session_id].client_seq + 1:
-            self.disconnect(
+        ws_session = self.active_ws_sessions[session_id]
+        if message["seq"] != ws_session.client_seq + 1:
+            await self.disconnect(
                 reason=DisconnectReason.ERROR,
-                message=f"Sequence number mismatch: received {message['seq']}, expected {self.clients[session_id].client_seq + 1}",
+                message=f"Sequence number mismatch: received {message['seq']}, expected {ws_session.client_seq + 1}",
                 code=3000,
             )
 
         # Store new sequence number
-        self.clients[session_id].client_seq = message["seq"]
+        ws_session.client_seq = message["seq"]
 
         match message_type:
             case ClientMessageType.OPEN:
@@ -249,17 +276,15 @@ class WebsocketServer:
 
         See https://developer.genesys.cloud/devapps/audiohook/protocol-reference#ping
         """
-        parameters = message["parameters"]
-        session_id = message["id"]
-
-        if parameters.get("rtt"):
-            self.logger.info(
-                f"[{session_id}] Received ping with RTT: {parameters['rtt']}"
-            )
-            self.clients[session_id].rtt.append(parameters["rtt"])
-            self.clients[session_id].last_rtt = parameters["rtt"]
-
         await self.send_message(type=ServerMessageType.PONG, client_message=message)
+
+        session_id = message["id"]
+        ws_session = self.active_ws_sessions[session_id]
+
+        if message["parameters"].get("rtt"):
+            await self.conversations_store.append_rtt(
+                ws_session.conversation_id, message["parameters"]["rtt"]
+            )
 
     async def handle_open_message(self, message: dict):
         """
@@ -290,11 +315,6 @@ class WebsocketServer:
         )
         self.logger.info(f"[{session_id}] Available media: {media}")
 
-        self.clients[session_id].ani = ani
-        self.clients[session_id].ani_name = ani_name
-        self.clients[session_id].dnis = dnis
-        self.clients[session_id].conversation_id = conversation_id
-
         # Select stereo media if available, otherwise fallback to the first media format
         selected_media = next(
             (
@@ -306,6 +326,21 @@ class WebsocketServer:
             media[0],
         )
 
+        # Store conversation_id in the temp session storage
+        ws_session = self.active_ws_sessions[session_id]
+        ws_session.conversation_id = conversation_id
+
+        # Save/update persistent state
+        conversation = Conversation(
+            id=conversation_id,
+            session_id=session_id,
+            ani=ani,
+            ani_name=ani_name,
+            dnis=dnis,
+            media=selected_media,
+        )
+        await self.conversations_store.set(conversation)
+
         await self.send_message(
             type=ServerMessageType.OPENED,
             client_message=message,
@@ -316,19 +351,20 @@ class WebsocketServer:
         )
 
         self.logger.info(f"[{session_id}] Session opened with media: {selected_media}")
-        self.clients[session_id].media = selected_media
 
-        await self.send_event(
-            event=AzureGenesysEvent.SESSION_STARTED,
-            session_id=session_id,
-            message={
-                "ani-name": ani_name,
-                "conversation-id": conversation_id,
-                "dnis": dnis,
-                "media": selected_media,
-                "position": position,
-            },
-            properties={},
+        asyncio.create_task(
+            self.send_event(
+                event=AzureGenesysEvent.SESSION_STARTED,
+                session_id=session_id,
+                message={
+                    "ani-name": ani_name,
+                    "conversation-id": conversation_id,
+                    "dnis": dnis,
+                    "media": selected_media,
+                    "position": position,
+                },
+                properties={},
+            )
         )
 
     async def handle_update_message(self, message: dict):
@@ -343,33 +379,32 @@ class WebsocketServer:
         """Handle close message"""
         parameters = message["parameters"]
         session_id = message["id"]
+        ws_session = self.active_ws_sessions[session_id]
+        conversation_id = ws_session.conversation_id
+
+        conversation = await self.conversations_store.get(conversation_id)
 
         # Close audio buffer (and recognition) if the session is ended
-        if self.clients[session_id].audio_buffer:
-            self.clients[session_id].audio_buffer.close()
+        if ws_session and ws_session.audio_buffer:
+            ws_session.audio_buffer.close()
 
-        if (
-            parameters["reason"] == CloseReason.END
-        ):  # TODO Fix check for connection probe
-            if self.clients[session_id].media:
-                self.logger.info(self.clients[session_id].transcript)
-
+        if parameters["reason"] == CloseReason.END:
+            if conversation and conversation.media:
                 await self.send_event(
                     event=AzureGenesysEvent.TRANSCRIPT_AVAILABLE,
                     session_id=session_id,
-                    message={"transcript": self.clients[session_id].transcript},
+                    message={"transcript": conversation.transcript},
                 )
 
                 # Save WAV file from raw audio buffer
                 # TODO retrieve raw bytes from PushAudioInputStream to avoid saving two buffers
-                if self.clients[session_id].raw_audio_buffer:
-                    wav_file = convert_to_wav(
-                        format=self.clients[session_id].media["format"],
-                        audio_data=self.clients[session_id].raw_audio_buffer,
-                        channels=len(self.clients[session_id].media["channels"]),
-                        sample_width=2,  # 16 bits per sample
-                        frame_rate=self.clients[session_id].media["rate"],
-                    )
+                wav_file = convert_to_wav(
+                    format=conversation.media["format"],
+                    audio_data=ws_session.raw_audio_buffer,
+                    channels=len(conversation.media["channels"]),
+                    sample_width=2,
+                    frame_rate=conversation.media["rate"],
+                )
 
                 # Upload the WAV file to Azure Blob Storage
                 if self.blob_service_client:
@@ -408,8 +443,10 @@ class WebsocketServer:
 
             await websocket.close(1000)
 
-            # TODO store session history in database, before removing
-            del self.clients[session_id]
+            # Set the client session to inactive and remove the temporary client session
+            await self.conversations_store.set_active(conversation_id, False)
+            if session_id in self.active_ws_sessions:
+                del self.active_ws_sessions[session_id]
 
     async def handle_connection_probe(self, message: dict):
         """
@@ -443,11 +480,12 @@ class WebsocketServer:
 
         position=\frac{samplesProcessed}{sampleRate}
         """
-        self.logger.debug(f"[{session_id}] Received audio data. Byte size: {len(data)}")
-        media = self.clients[session_id].media
+        ws_session = self.active_ws_sessions[session_id]
+        conversation_id = ws_session.conversation_id
+        conversation = await self.conversations_store.get(conversation_id)
+        media = conversation.media
 
-        # Initialize the audio buffer for the session
-        if self.clients[session_id].audio_buffer is None:
+        if ws_session.audio_buffer is None:
             self.logger.info(
                 f"[{session_id}] type {media['type']}, format {media['format']}, rate {media['rate']}, channels {len(media['channels'])}"
             )
@@ -460,17 +498,17 @@ class WebsocketServer:
             )
 
             stream = speechsdk.audio.PushAudioInputStream(stream_format=audio_format)
-            self.clients[session_id].audio_buffer = stream
-            self.clients[session_id].raw_audio_buffer = bytearray()
+            ws_session.audio_buffer = stream
+            ws_session.raw_audio_buffer = bytearray()
 
             # Start the synchronous speech recognition as a asyncio task
-            self.clients[session_id].recognize_task = asyncio.create_task(
+            ws_session.recognize_task = asyncio.create_task(
                 self.recognize_speech(session_id)
             )
 
         # Append the buffers to the audio stream
-        self.clients[session_id].audio_buffer.write(data)
-        self.clients[session_id].raw_audio_buffer += data
+        ws_session.audio_buffer.write(data)
+        ws_session.raw_audio_buffer += data
 
     async def send_event(
         self,
@@ -501,7 +539,16 @@ class WebsocketServer:
 
         # Determine speech configuration based on channel count and authentication method
         # Use multichannel (preview) for stereo calls
-        is_multichannel = len(self.clients[session_id].media["channels"]) > 1
+        ws_session = self.active_ws_sessions.get(session_id)
+        if not ws_session or not ws_session.conversation_id:
+            return
+        conversation_id = ws_session.conversation_id
+        conversation = await self.conversations_store.get(conversation_id)
+        is_multichannel = (
+            len(conversation.media["channels"]) > 1
+            if conversation and conversation.media
+            else False
+        )
         region = os.environ["AZURE_SPEECH_REGION"]
         endpoint = (
             f"wss://{region}.stt.speech.microsoft.com/speech/recognition/conversation/cognitiveservices/v1?setfeature=multichannel2"
@@ -549,19 +596,16 @@ class WebsocketServer:
         speech_config.output_format = speechsdk.OutputFormat.Detailed
         speech_config.request_word_level_timestamps()
         speech_config.enable_audio_logging()
-        speech_config.set_profanity(speechsdk.ProfanityOption.Removed)
-        # speech_config.set_property(
-        #     speechsdk.PropertyId.SpeechServiceConnection_InitialSilenceTimeoutMs,
-        #     "45000",
-        # )
+        speech_config.set_profanity(speechsdk.ProfanityOption.Masked)
 
-        # Preview: only supported for en-us
+        # Enable Semantic Segmentation (preview) (en-us only)
+        # https://learn.microsoft.com/en-us/azure/ai-services/speech-service/how-to-recognize-speech?pivots=programming-language-python#semantic-segmentation
         speech_config.set_property(
             speechsdk.PropertyId.Speech_SegmentationStrategy, "Semantic"
         )
 
         audio_config = speechsdk.audio.AudioConfig(
-            stream=self.clients[session_id].audio_buffer
+            stream=self.active_ws_sessions[session_id].audio_buffer
         )
         speech_recognizer = speechsdk.SpeechRecognizer(
             speech_config=speech_config,
@@ -569,7 +613,8 @@ class WebsocketServer:
             auto_detect_source_language_config=auto_detect_source_language_config,
         )
 
-        # Phrase list
+        # Enable phrase list
+        # https://learn.microsoft.com/en-us/azure/ai-services/speech-service/improve-accuracy-phrase-list?tabs=terminal&pivots=programming-language-python
         phrase_list_grammar = speechsdk.PhraseListGrammar.from_recognizer(
             speech_recognizer
         )
@@ -603,13 +648,20 @@ class WebsocketServer:
             elif text and not text[0].isupper():
                 text = text[0].upper() + text[1:]
 
-            # Store transcript in local memory
-            self.clients[session_id].transcript.append(
-                {
+            # Store transcript in persistent storage
+            async def update_transcript():
+                ws_session = self.active_ws_sessions[session_id]
+
+                transcript_item = {
                     "channel": json_data["Channel"] if is_multichannel else None,
                     "text": text,
                 }
-            )
+
+                await self.conversations_store.append_transcript(
+                    ws_session.conversation_id, transcript_item
+                )
+
+            asyncio.run_coroutine_threadsafe(update_transcript(), loop)
 
             # Send transcript to Event Hub
             asyncio.run_coroutine_threadsafe(
@@ -617,7 +669,7 @@ class WebsocketServer:
                     event=AzureGenesysEvent.PARTIAL_TRANSCRIPT,
                     session_id=session_id,
                     message={
-                        "transcript": text,
+                        "text": text,
                         "channel": json_data["Channel"] if is_multichannel else None,
                         "data": json_data,
                     },

@@ -14,9 +14,10 @@ The easiest way to get started is by using the included DevContainer configurati
 
 ### Azure resources
 
-- Azure Event Hub
-- Azure Blob Storage
 - Azure AI Speech
+- Azure Cosmos DB
+- Azure Event Hub (optional)
+- Azure Blob Storage (optional)
 
 ## Installation
 
@@ -28,36 +29,48 @@ uv sync
 
 ## Development
 
+Copy the `.env.sample` file to `.env`:
+
+```bash
+cp .env.sample .env
+```
+
+Edit the `.env` file to provide your own configuration values. The `.env.sample` file contains example environment variables required to run the server. These variables are loaded automatically when the server starts.
+
 Start the development server with the command below. It will run on port 5001, listening for websocket connections. The server will automatically restart on code changes.
 
 ```bash
 uv run server.py
 ```
 
+### Integration test
+
 During development, you can use the [Genesys AudioHook Sample Service](https://github.com/purecloudlabs/audiohook-reference-implementation/tree/main/client) to test the server. This client implements the Genesys AudioHook protocol and sends event and audio data to the websocket server. It supports both secure (wss) and insecure (ws) connections. Run the command below to start the client, ensuring the API key and secret match your environment variables.
 
 ```bash
+git clone https://github.com/purecloudlabs/audiohook-reference-implementation.git
 cd client
 npm install
 ```
-If you are deploying this repo using a container (devcontainers), and your service is being served in localhost, and you want to run the Genesys client in the host OS, make sure that you firewall rules for WSL are correctly setup (in your Windows Host). Run the following commands in PowerSheel as an administrator:
-```
-New-NetFirewallRule -DisplayName "WSL" -Direction Inbound  -InterfaceAlias "vEthernet (WSL (Hyper-V firewall))"  -Action Allow
-New-NetFirewallRule -DisplayName "Allow Port 5000" -Direction Inbound -LocalPort 5000 -Protocol TCP -Action Allow
-```
-Also, if you are using WSL, which would be your case if you are using devcontainers in windows, make sure to mirror your networking in wsl by creating a ~/.wslconfig with the following (in your Windows home location):
 
-```
-[wsl2]
-networkingMode=mirrored
-```
+> [!NOTE]
+> If running the Genesys client on Windows while the server is in a DevContainer (WSL), ensure WSL allows inbound traffic. Run these PowerShell commands as administrator:
+>
+> ```powershell
+> New-NetFirewallRule -DisplayName "WSL" -Direction Inbound -InterfaceAlias "vEthernet (WSL (Hyper-V firewall))" -Action Allow
+> New-NetFirewallRule -DisplayName "Allow Port 5000" -Direction Inbound -LocalPort 5000 -Protocol TCP -Action Allow
+> ```
+>
+> If you encounter connectivity issues, try using [Mirrored mode networking](https://learn.microsoft.com/en-us/windows/wsl/networking#mirrored-mode-networking) as an alternative solution.
+
 
 Then you can start your client:
 ```bash
-npm start --uri ws://host.docker.internal:5000/ws --api-key your_api_key --client-secret your_secret --wavfile your_audio.wav
-
+npm start --uri ws://host.docker.internal:5000/audiohook/ws --api-key your_api_key --client-secret your_secret --wavfile your_audio.wav
+```
 OR
-npm start -- --uri ws://localhost:5000/ws --api-key your_api_key --client-secret  your_secret --wavfile your_audio.wav
+```bash
+npm start -- --uri ws://localhost:5000/audiohook/ws --api-key your_api_key --client-secret  your_secret --wavfile your_audio.wav
 ```
 
 To perform a load test on your websocket server, use the `--session-count` parameter to set the number of concurrent sessions.
@@ -91,9 +104,3 @@ az containerapp up --resource-group your-resource-group \
 --ingress external --target-port 8000 --source . \
 --env-vars WEBSOCKET_SERVER_API_KEY="your_api_key" WEBSOCKET_SERVER_CLIENT_SECRET="your_secret=" DEBUG_MODE="true"
 ```
-
-## TODO
-- Add extensive logging frameworks
-- Make application stateless
-- Add retry handling and reconnect on disconnect
-- Benchmarks and performance testing, optimize for performance

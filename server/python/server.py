@@ -11,6 +11,13 @@ LOGGER: logging.Logger = logging.getLogger(__name__)
 # Set logging level based on environment variables
 if os.getenv("DEBUG_MODE") == "true":
     logging.basicConfig(level=logging.DEBUG)
+    logging.getLogger("asyncio").setLevel(logging.WARNING)
+    logging.getLogger("azure.identity").setLevel(logging.WARNING)
+    logging.getLogger("azure.core").setLevel(logging.WARNING)
+    logging.getLogger("azure.eventhub").setLevel(logging.WARNING)
+    logging.getLogger("azure.storage").setLevel(logging.WARNING)
+    logging.getLogger("urllib3").setLevel(logging.WARNING)
+    logging.getLogger("hypercorn").setLevel(logging.WARNING)
     LOGGER.info("Starting server in debug mode")
 else:
     logging.basicConfig(level=logging.WARNING)
