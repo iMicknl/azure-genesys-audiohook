@@ -4,6 +4,8 @@ import audioop
 import io
 import wave
 
+import numpy as np
+
 from ..enums import MediaFormat
 
 
@@ -31,3 +33,18 @@ def convert_to_wav(
         wav_file.writeframes(audio_data)
 
     return buffer.getvalue()
+
+
+def split_stream(data: bytes) -> tuple[bytes, bytes]:
+    """
+    Split the audio stream into customer and agent streams.
+    The audio stream is a 2-channel interleaved 8-bit PCMU audio stream.
+    The first channel is the customer stream and the second channel is the agent stream.
+    """
+    array = np.frombuffer(data, dtype=np.int8)
+    reshaped = array.reshape((int(len(array) / 2), 2))
+
+    customer_stream = reshaped[:, 0].tobytes()
+    agent_stream = reshaped[:, 1].tobytes()
+
+    return customer_stream, agent_stream
