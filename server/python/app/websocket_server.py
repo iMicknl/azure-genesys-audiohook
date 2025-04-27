@@ -349,6 +349,7 @@ class WebsocketServer:
                 event=AzureGenesysEvent.SESSION_STARTED,
                 session_id=session_id,
                 message={
+                    "ani": ani,
                     "ani-name": ani_name,
                     "conversation-id": conversation_id,
                     "dnis": dnis,
