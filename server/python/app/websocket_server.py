@@ -330,6 +330,7 @@ class WebsocketServer:
             ani_name=ani_name,
             dnis=dnis,
             media=selected_media,
+            position=position,
         )
         await self.conversations_store.set(conversation)
 
