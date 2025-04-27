@@ -20,7 +20,7 @@ class ConversationStore:
     async def list(self, active: bool | None = None) -> list[Conversation]:
         """
         List all conversations, optionally filtering by active status.
-        
+
         :param active: If specified, filters conversations by their active status.
         :return: A list of conversations.
         """
