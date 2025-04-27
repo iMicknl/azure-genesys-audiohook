@@ -66,7 +66,7 @@ class WebsocketServer:
         elif account_url := os.getenv("AZURE_STORAGE_ACCOUNT_URL"):
             self.blob_service_client = BlobServiceClient(
                 account_url, credential=get_azure_credential_async()
-            )  # TODO cache DefaultAzureCredential
+            )
 
         if fully_qualified_namespace := os.getenv("AZURE_EVENT_HUB_HOSTNAME"):
             self.producer_client = EventHubProducerClient(
