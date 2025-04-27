@@ -1,6 +1,7 @@
 import os
 
 import pytest
+from app.storage.in_memory_conversation_store import InMemoryConversationStore
 from app.websocket_server import WebsocketServer
 
 os.environ["WEBSOCKET_SERVER_API_KEY"] = "SGVsbG8sIEkgYW0gdGhlIEFQSSBrZXkh"
@@ -13,8 +14,9 @@ os.environ["WEBSOCKET_SERVER_CLIENT_SECRET"] = (
 def app():
     """Create a test client for the app. See https://quart.palletsprojects.com/en/latest/how_to_guides/testing.html#testing"""
     server = WebsocketServer()
+    # Inject in-memory conversation store for testing
+    server.conversations_store = InMemoryConversationStore()
     app = server.app.test_client()
-
     return app
 
 
