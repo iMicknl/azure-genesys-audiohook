@@ -113,7 +113,7 @@ class WebsocketServer:
 
     async def get_conversation(self, conversation_id) -> Any:
         """
-        Retrieve a client session by its conversation ID (not session_id!).
+        Retrieve a client session by its conversation ID.
         """
         conversation = await self.conversations_store.get(conversation_id)
         if conversation:
@@ -511,9 +511,10 @@ class WebsocketServer:
     ):
         """Send an JSON event to Azure Event Hub using the EventPublisher abstraction."""
         if self.event_publisher:
+            ws_session = self.active_ws_sessions[session_id]
             await self.event_publisher.send_event(
                 event_type=f"azure-genesys-audiohook.{event}",
-                session_id=session_id,
+                conversation_id=ws_session.conversation_id,
                 message=message,
                 properties=properties,
             )
@@ -524,11 +525,10 @@ class WebsocketServer:
 
         # Determine speech configuration based on channel count and authentication method
         # Use multichannel (preview) for stereo calls
-        ws_session = self.active_ws_sessions.get(session_id)
-        if not ws_session or not ws_session.conversation_id:
-            return
+        ws_session = self.active_ws_sessions[session_id]
         conversation_id = ws_session.conversation_id
         conversation = await self.conversations_store.get(conversation_id)
+
         is_multichannel = (
             len(conversation.media["channels"]) > 1
             if conversation and conversation.media
