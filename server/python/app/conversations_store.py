@@ -1,8 +1,8 @@
 import os
-from typing import List, Optional
 
 from azure.cosmos import PartitionKey
 from azure.cosmos.aio import CosmosClient
+from azure.cosmos.exceptions import CosmosResourceNotFoundError
 
 from .identity import get_azure_credential_async
 from .models import Conversation
@@ -15,7 +15,7 @@ class ConversationsStore:
     getting, setting, deleting, and listing conversations.
     """
 
-    async def get(self, conversation_id: str) -> Optional[Conversation]:
+    async def get(self, conversation_id: str) -> Conversation | None:
         raise NotImplementedError
 
     async def set(self, conversation: Conversation):
@@ -24,10 +24,10 @@ class ConversationsStore:
     async def delete(self, conversation_id: str):
         raise NotImplementedError
 
-    async def list(self) -> List[Conversation]:
+    async def list(self) -> list[Conversation]:
         raise NotImplementedError
 
-    async def get_by_session_id(self, session_id: str) -> Optional[Conversation]:
+    async def get_by_session_id(self, session_id: str) -> Conversation | None:
         raise NotImplementedError
 
 
@@ -61,7 +61,6 @@ class CosmosDBConversationsStore(ConversationsStore):
                 indexing_policy={
                     "indexingMode": "consistent",
                     "includedPaths": [
-                        {"path": "/id/?"},
                         {"path": "/session_id/?"},
                         {"path": "/active/?"},
                         {"path": "/ani/?"},
@@ -73,10 +72,15 @@ class CosmosDBConversationsStore(ConversationsStore):
             )
         return self._container
 
-    async def get(self, conversation_id: str) -> Optional[Conversation]:
+    async def get(self, conversation_id: str) -> Conversation | None:
         container = await self._get_container()
-        item = await container.read_item(conversation_id, partition_key=conversation_id)
-        return Conversation(**item)
+        try:
+            item = await container.read_item(
+                conversation_id, partition_key=conversation_id
+            )
+            return Conversation(**item)
+        except CosmosResourceNotFoundError:
+            return None
 
     async def set(self, conversation: Conversation):
         container = await self._get_container()
@@ -86,23 +90,26 @@ class CosmosDBConversationsStore(ConversationsStore):
         # to avoid overwriting the entire document
         await container.upsert_item(data)
 
-    async def delete(self, conversation_id: str):
+    async def delete(self, conversation_id: str) -> None:
         container = await self._get_container()
         await container.delete_item(conversation_id, partition_key=conversation_id)
 
-    async def list(self) -> List[Conversation]:
+    async def list(self) -> list[Conversation]:
         container = await self._get_container()
         query = "SELECT * FROM c"
         items = container.query_items(query)
+
         return [Conversation(**item) async for item in items]
 
-    async def get_by_session_id(self, session_id: str) -> Optional[Conversation]:
+    async def get_by_session_id(self, session_id: str) -> Conversation | None:
         container = await self._get_container()
         query = "SELECT * FROM c WHERE c.session_id = @session_id"
         params = [{"name": "@session_id", "value": session_id}]
         items = container.query_items(query, parameters=params)
+
         async for item in items:
             return Conversation(**item)
+
         return None
 
 
@@ -110,7 +117,7 @@ class InMemoryConversationsStore(ConversationsStore):
     def __init__(self):
         self._store = {}
 
-    async def get(self, conversation_id: str) -> Optional[Conversation]:
+    async def get(self, conversation_id: str) -> Conversation | None:
         return self._store.get(conversation_id)
 
     async def set(self, conversation: Conversation):
@@ -120,13 +127,14 @@ class InMemoryConversationsStore(ConversationsStore):
         if conversation_id in self._store:
             del self._store[conversation_id]
 
-    async def list(self) -> List[Conversation]:
+    async def list(self) -> list[Conversation]:
         return list(self._store.values())
 
-    async def get_by_session_id(self, session_id: str) -> Optional[Conversation]:
+    async def get_by_session_id(self, session_id: str) -> Conversation | None:
         for conversation in self._store.values():
             if conversation.session_id == session_id:
                 return conversation
+
         return None
 
 
