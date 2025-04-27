@@ -8,7 +8,7 @@ import azure.cognitiveservices.speech as speechsdk
 from azure.eventhub import EventData
 from azure.eventhub.aio import EventHubProducerClient
 from azure.storage.blob.aio import BlobServiceClient
-from quart import Quart, websocket
+from quart import Quart, request, websocket
 
 from .enums import (
     AzureGenesysEvent,
@@ -107,8 +107,11 @@ class WebsocketServer:
         Retrieve a list of conversations.
         """
         # TODO implement pagination
-        # TODO implement filtering (active/ended)
-        conversations = await self.conversations_store.list()
+        active = request.args.get("active")
+        if isinstance(active, str):
+            active = {"true": True, "false": False}.get(active.lower())
+
+        conversations = await self.conversations_store.list(active=active)
 
         return ConversationsResponse(
             count=len(conversations),

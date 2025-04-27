@@ -22,8 +22,12 @@ class InMemoryConversationStore(ConversationStore):
         if conversation_id in self._store:
             del self._store[conversation_id]
 
-    async def list(self) -> list[Conversation]:
-        return list(self._store.values())
+    async def list(self, active: bool | None = None) -> list[Conversation]:
+        if active is None:
+            return list(self._store.values())
+        return [
+            c for c in self._store.values() if getattr(c, "active", False) == active
+        ]
 
     async def get_by_session_id(self, session_id: str) -> Conversation | None:
         for conversation in self._store.values():

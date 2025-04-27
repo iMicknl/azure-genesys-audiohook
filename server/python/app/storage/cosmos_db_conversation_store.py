@@ -73,10 +73,16 @@ class CosmosDBConversationStore(ConversationStore):
         container = await self._get_container()
         await container.delete_item(conversation_id, partition_key=conversation_id)
 
-    async def list(self) -> list[Conversation]:
+    async def list(self, active: bool | None = None) -> list[Conversation]:
         container = await self._get_container()
-        query = "SELECT * FROM c"
-        items = container.query_items(query)
+        if active is None:
+            query = "SELECT * FROM c"
+            items = container.query_items(query)
+        else:
+            query = "SELECT * FROM c WHERE c.active = @active"
+            items = container.query_items(
+                query, parameters=[{"name": "@active", "value": active}]
+            )
         return [Conversation(**item) async for item in items]
 
     async def get_by_session_id(self, session_id: str) -> Conversation | None:
