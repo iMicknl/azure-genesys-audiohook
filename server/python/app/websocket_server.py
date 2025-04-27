@@ -10,8 +10,6 @@ from azure.eventhub.aio import EventHubProducerClient
 from azure.storage.blob.aio import BlobServiceClient
 from quart import Quart, websocket
 
-from .audio import convert_to_wav
-from .conversations_store import ConversationsStore, get_conversations_store
 from .enums import (
     AzureGenesysEvent,
     ClientMessageType,
@@ -19,14 +17,16 @@ from .enums import (
     DisconnectReason,
     ServerMessageType,
 )
-from .identity import get_azure_credential_async, get_speech_token
 from .models import (
     Conversation,
     ConversationsResponse,
     HealthCheckResponse,
     WebSocketSessionStorage,
 )
-from .storage import upload_blob_file
+from .storage.conversation_store import ConversationStore, get_conversations_store
+from .utils.audio import convert_to_wav
+from .utils.identity import get_azure_credential_async, get_speech_token
+from .utils.storage import upload_blob_file
 
 
 class WebsocketServer:
@@ -37,7 +37,7 @@ class WebsocketServer:
     logger: logging.Logger = logging.getLogger(__name__)
     blob_service_client: BlobServiceClient | None = None
     producer_client: EventHubProducerClient | None = None
-    conversations_store: ConversationsStore | None = None
+    conversations_store: ConversationStore | None = None
 
     def __init__(self):
         """Initialize the server"""

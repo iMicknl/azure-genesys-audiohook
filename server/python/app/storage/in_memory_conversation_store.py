@@ -1,0 +1,32 @@
+from ..models import Conversation
+from .conversation_store import ConversationStore
+
+
+class InMemoryConversationStore(ConversationStore):
+    """
+    In-memory implementation of the ConversationStore interface.
+    This class is used for testing and development purposes.
+    It stores conversations in a dictionary.
+    """
+
+    def __init__(self):
+        self._store = {}
+
+    async def get(self, conversation_id: str) -> Conversation | None:
+        return self._store.get(conversation_id)
+
+    async def set(self, conversation: Conversation):
+        self._store[conversation.id] = conversation
+
+    async def delete(self, conversation_id: str):
+        if conversation_id in self._store:
+            del self._store[conversation_id]
+
+    async def list(self) -> list[Conversation]:
+        return list(self._store.values())
+
+    async def get_by_session_id(self, session_id: str) -> Conversation | None:
+        for conversation in self._store.values():
+            if conversation.session_id == session_id:
+                return conversation
+        return None
