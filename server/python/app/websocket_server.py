@@ -22,7 +22,7 @@ from .enums import (
 )
 from .identity import get_azure_credential_async, get_speech_token
 from .models import (
-    ClientSession,
+    Conversation,
     ConversationsResponse,
     TemporaryClientSession,
 )
@@ -32,7 +32,7 @@ from .storage import upload_blob_file
 class WebsocketServer:
     """Websocket server class"""
 
-    clients: dict[str, ClientSession] = {}
+    clients: dict[str, Conversation] = {}
     temp_clients: dict[str, TemporaryClientSession] = {}
     logger: logging.Logger = logging.getLogger(__name__)
     blob_service_client: BlobServiceClient | None = None
@@ -121,13 +121,13 @@ class WebsocketServer:
         """
         Retrieve a client session by its conversation ID (not session_id!).
         """
-        client = await self.conversations_store.get_by_conversation_id(conversation_id)
-        if client:
-            return dataclasses.asdict(client), 200
+        conversation = await self.conversations_store.get(conversation_id)
+        if conversation:
+            return dataclasses.asdict(conversation), 200
         return {
             "error": {
                 "code": "unknown_conversation",
-                "message": f"No session found for conversation ID '{conversation_id}'. Please verify the ID and try again.",
+                "message": f"No conversation found for conversation ID '{conversation_id}'. Please verify the ID and try again.",
             }
         }, 404
 
@@ -192,10 +192,10 @@ class WebsocketServer:
 
             # Note: AudioHook currently does not support re-establishing session connections.
             # Set the client session to inactive and remove the temporary client session
-            client = await self.conversations_store.get(session_id)
-            if client:
-                client.active = False
-                await self.conversations_store.set(session_id, client)
+            conversation = await self.conversations_store.get(session_id)
+            if conversation:
+                conversation.active = False
+                await self.conversations_store.set(session_id, conversation)
             if session_id in self.temp_clients:
                 del self.temp_clients[session_id]
 
@@ -279,12 +279,12 @@ class WebsocketServer:
         if not temp_session or not temp_session.conversation_id:
             return
         conversation_id = temp_session.conversation_id
-        client = await self.conversations_store.get(conversation_id)
+        conversation = await self.conversations_store.get(conversation_id)
 
-        if client and parameters.get("rtt"):
-            client.rtt.append(parameters["rtt"])
-            client.last_rtt = parameters["rtt"]
-            await self.conversations_store.set(conversation_id, client)
+        if conversation and parameters.get("rtt"):
+            conversation.rtt.append(parameters["rtt"])
+            conversation.last_rtt = parameters["rtt"]
+            await self.conversations_store.set(conversation_id, conversation)
 
         await self.send_message(type=ServerMessageType.PONG, client_message=message)
 
@@ -332,15 +332,14 @@ class WebsocketServer:
         self.temp_clients[session_id].conversation_id = conversation_id
 
         # Save/update persistent state
-        conversation = ClientSession(
-            session_id=session_id, conversation_id=conversation_id
+        conversation = Conversation(
+            session_id=session_id,
+            conversation_id=conversation_id,
+            ani=ani,
+            ani_name=ani_name,
+            dnis=dnis,
+            media=selected_media,
         )
-        await self.conversations_store.set(conversation_id, conversation)
-
-        conversation.ani = ani
-        conversation.ani_name = ani_name
-        conversation.dnis = dnis
-        conversation.media = selected_media
         await self.conversations_store.set(conversation_id, conversation)
 
         await self.send_message(
@@ -381,33 +380,32 @@ class WebsocketServer:
         """Handle close message"""
         parameters = message["parameters"]
         session_id = message["id"]
-        temp_session = self.temp_clients.get(session_id)
-        if not temp_session or not temp_session.conversation_id:
-            return
+        temp_session = self.temp_clients[session_id]
         conversation_id = temp_session.conversation_id
-        client = await self.conversations_store.get(conversation_id)
+
+        conversation = await self.conversations_store.get(conversation_id)
 
         # Close audio buffer (and recognition) if the session is ended
         if temp_session and temp_session.audio_buffer:
             temp_session.audio_buffer.close()
 
         if parameters["reason"] == CloseReason.END:
-            if client and client.media:
-                self.logger.info(client.transcript)
+            if conversation and conversation.media:
+                self.logger.info(conversation.transcript)
                 await self.send_event(
                     event=AzureGenesysEvent.TRANSCRIPT_AVAILABLE,
                     session_id=session_id,
-                    message={"transcript": client.transcript},
+                    message={"transcript": conversation.transcript},
                 )
 
                 # Save WAV file from raw audio buffer
                 # TODO retrieve raw bytes from PushAudioInputStream to avoid saving two buffers
                 wav_file = convert_to_wav(
-                    format=client.media["format"],
+                    format=conversation.media["format"],
                     audio_data=temp_session.raw_audio_buffer,
-                    channels=len(client.media["channels"]),
+                    channels=len(conversation.media["channels"]),
                     sample_width=2,
-                    frame_rate=client.media["rate"],
+                    frame_rate=conversation.media["rate"],
                 )
 
                 # Upload the WAV file to Azure Blob Storage
@@ -449,9 +447,9 @@ class WebsocketServer:
 
             # TODO store session history in database, before removing
             # Set the client session to inactive and remove the temporary client session
-            if client:
-                client.active = False
-                await self.conversations_store.set(conversation_id, client)
+            if conversation:
+                conversation.active = False
+                await self.conversations_store.set(conversation_id, conversation)
             if session_id in self.temp_clients:
                 del self.temp_clients[session_id]
 
@@ -491,8 +489,8 @@ class WebsocketServer:
         if not temp_session or not temp_session.conversation_id:
             return
         conversation_id = temp_session.conversation_id
-        client = await self.conversations_store.get(conversation_id)
-        media = client.media if client else None
+        conversation = await self.conversations_store.get(conversation_id)
+        media = conversation.media if conversation else None
         if temp_session.audio_buffer is None:
             self.logger.info(
                 f"[{session_id}] type {media['type']}, format {media['format']}, rate {media['rate']}, channels {len(media['channels'])}"
@@ -551,9 +549,11 @@ class WebsocketServer:
         if not temp_session or not temp_session.conversation_id:
             return
         conversation_id = temp_session.conversation_id
-        client = await self.conversations_store.get(conversation_id)
+        conversation = await self.conversations_store.get(conversation_id)
         is_multichannel = (
-            len(client.media["channels"]) > 1 if client and client.media else False
+            len(conversation.media["channels"]) > 1
+            if conversation and conversation.media
+            else False
         )
         region = os.environ["AZURE_SPEECH_REGION"]
         endpoint = (
@@ -660,9 +660,9 @@ class WebsocketServer:
                 if not temp_session or not temp_session.conversation_id:
                     return
                 conversation_id = temp_session.conversation_id
-                client = await self.conversations_store.get(conversation_id)
-                if client:
-                    client.transcript.append(
+                conversation = await self.conversations_store.get(conversation_id)
+                if conversation:
+                    conversation.transcript.append(
                         {
                             "channel": json_data["Channel"]
                             if is_multichannel
@@ -670,7 +670,7 @@ class WebsocketServer:
                             "text": text,
                         }
                     )
-                    await self.conversations_store.set(conversation_id, client)
+                    await self.conversations_store.set(conversation_id, conversation)
 
             asyncio.run_coroutine_threadsafe(update_transcript(), loop)
 

@@ -5,23 +5,23 @@ from typing import List, Optional
 from azure.cosmos import PartitionKey
 from azure.cosmos.aio import CosmosClient
 
-from .models import ClientSession
+from .models import Conversation
 
 
 class ConversationsStore:
-    async def get(self, conversation_id: str) -> Optional[ClientSession]:
+    async def get(self, conversation_id: str) -> Optional[Conversation]:
         raise NotImplementedError
 
-    async def set(self, conversation_id: str, session: ClientSession):
+    async def set(self, conversation_id: str, conversation: Conversation):
         raise NotImplementedError
 
     async def delete(self, conversation_id: str):
         raise NotImplementedError
 
-    async def list(self) -> List[ClientSession]:
+    async def list(self) -> List[Conversation]:
         raise NotImplementedError
 
-    async def get_by_session_id(self, session_id: str) -> Optional[ClientSession]:
+    async def get_by_session_id(self, session_id: str) -> Optional[Conversation]:
         raise NotImplementedError
 
 
@@ -49,19 +49,19 @@ class CosmosDBConversationsStore(ConversationsStore):
             )
         return self._container
 
-    async def get(self, conversation_id: str) -> Optional[ClientSession]:
+    async def get(self, conversation_id: str) -> Optional[Conversation]:
         container = await self._get_container()
         try:
             item = await container.read_item(
                 conversation_id, partition_key=conversation_id
             )
-            return ClientSession(**item)
+            return Conversation(**item)
         except Exception:
             return None
 
-    async def set(self, conversation_id: str, session: ClientSession):
+    async def set(self, conversation_id: str, conversation: Conversation):
         container = await self._get_container()
-        data = dataclasses.asdict(session)
+        data = dataclasses.asdict(conversation)
         data["id"] = conversation_id
         data["conversation_id"] = conversation_id
         await container.upsert_item(data)
@@ -70,13 +70,13 @@ class CosmosDBConversationsStore(ConversationsStore):
         container = await self._get_container()
         await container.delete_item(conversation_id, partition_key=conversation_id)
 
-    async def list(self) -> List[ClientSession]:
+    async def list(self) -> List[Conversation]:
         container = await self._get_container()
         query = "SELECT * FROM c"
         items = container.query_items(query, enable_cross_partition_query=True)
-        return [ClientSession(**item) async for item in items]
+        return [Conversation(**item) async for item in items]
 
-    async def get_by_session_id(self, session_id: str) -> Optional[ClientSession]:
+    async def get_by_session_id(self, session_id: str) -> Optional[Conversation]:
         container = await self._get_container()
         query = "SELECT * FROM c WHERE c.session_id = @session_id"
         params = [{"name": "@session_id", "value": session_id}]
@@ -84,7 +84,7 @@ class CosmosDBConversationsStore(ConversationsStore):
             query, parameters=params, enable_cross_partition_query=True
         )
         async for item in items:
-            return ClientSession(**item)
+            return Conversation(**item)
         return None
 
 
@@ -92,23 +92,23 @@ class InMemoryConversationsStore(ConversationsStore):
     def __init__(self):
         self._store = {}
 
-    async def get(self, conversation_id: str) -> Optional[ClientSession]:
+    async def get(self, conversation_id: str) -> Optional[Conversation]:
         return self._store.get(conversation_id)
 
-    async def set(self, conversation_id: str, session: ClientSession):
-        self._store[conversation_id] = session
+    async def set(self, conversation_id: str, conversation: Conversation):
+        self._store[conversation_id] = conversation
 
     async def delete(self, conversation_id: str):
         if conversation_id in self._store:
             del self._store[conversation_id]
 
-    async def list(self) -> List[ClientSession]:
+    async def list(self) -> List[Conversation]:
         return list(self._store.values())
 
-    async def get_by_session_id(self, session_id: str) -> Optional[ClientSession]:
-        for session in self._store.values():
-            if session.session_id == session_id:
-                return session
+    async def get_by_session_id(self, session_id: str) -> Optional[Conversation]:
+        for conversation in self._store.values():
+            if conversation.session_id == session_id:
+                return conversation
         return None
 
 

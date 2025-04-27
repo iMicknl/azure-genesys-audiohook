@@ -27,18 +27,18 @@ class ServerMessageBase(MessageBase):
 
 
 @dataclass(kw_only=True)
-class ClientSession:
-    """Dataclass to store client session details"""
+class Conversation:
+    """Dataclass to store conversation details"""
 
     session_id: str
+    conversation_id: str
     active: bool = True
-    ani: str | None = None
-    ani_name: str | None = None
-    dnis: str | None = None
-    conversation_id: str | None = None
+    ani: str
+    ani_name: str
+    dnis: str
+    media: dict  # todo type
     rtt: list[int] = field(default_factory=list)
     last_rtt: int | None = None
-    media: dict | None = None
     transcript: list[dict] = field(default_factory=list)
 
 
@@ -60,7 +60,7 @@ class HealthCheckResponse:
 
     status: str
     connected_clients: int
-    client_sessions: list[ClientSession]
+    client_sessions: list[Conversation]
 
 
 @dataclass(kw_only=True)
@@ -68,4 +68,4 @@ class ConversationsResponse:
     """Dataclass to model Conversations response"""
 
     count: int
-    conversations: list[ClientSession] = field(default_factory=list)
+    conversations: list[Conversation] = field(default_factory=list)
