@@ -342,17 +342,19 @@ class WebsocketServer:
         self.logger.info(f"[{session_id}] Session opened with media: {selected_media}")
         self.clients[session_id].media = selected_media
 
-        await self.send_event(
-            event=AzureGenesysEvent.SESSION_STARTED,
-            session_id=session_id,
-            message={
-                "ani-name": ani_name,
-                "conversation-id": conversation_id,
-                "dnis": dnis,
-                "media": selected_media,
-                "position": position,
-            },
-            properties={},
+        asyncio.create_task(
+            self.send_event(
+                event=AzureGenesysEvent.SESSION_STARTED,
+                session_id=session_id,
+                message={
+                    "ani-name": ani_name,
+                    "conversation-id": conversation_id,
+                    "dnis": dnis,
+                    "media": selected_media,
+                    "position": position,
+                },
+                properties={},
+            )
         )
 
     async def handle_update_message(self, message: dict):
