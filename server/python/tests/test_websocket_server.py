@@ -1,7 +1,7 @@
-import pytest
 import os
-from app.websocket_server import WebsocketServer
 
+import pytest
+from app.websocket_server import WebsocketServer
 
 os.environ["WEBSOCKET_SERVER_API_KEY"] = "SGVsbG8sIEkgYW0gdGhlIEFQSSBrZXkh"
 os.environ["WEBSOCKET_SERVER_CLIENT_SECRET"] = (
@@ -24,10 +24,7 @@ async def test_health_check(app):
     response = await app.get("/")
 
     assert response.status_code == 200
-    assert (
-        await response.data
-        == b'{"client_sessions":{},"connected_clients":0,"status":"online"}\n'
-    )
+    assert await response.data == b'{"status":"online"}\n'
 
 
 @pytest.mark.asyncio
@@ -40,7 +37,6 @@ async def test_health_check_valid_json(app):
 
     assert data is not None
     assert data["status"] == "online"
-    assert data["connected_clients"] == 0
 
 
 @pytest.mark.asyncio
@@ -63,7 +59,7 @@ async def test_ws_invalid_api_key(app):
         "Signature": "test_signature",
     }
 
-    async with app.websocket("/ws", headers=headers) as ws:
+    async with app.websocket("/audiohook/ws", headers=headers) as ws:
         response = await ws.receive_json()
 
         assert response["type"] == "disconnect"
@@ -81,7 +77,7 @@ async def test_ws_valid_connection(app):
         "Signature-Input": "test_signature_input",
         "Signature": "test_signature",
     }
-    async with app.websocket("/ws", headers=headers) as ws:
+    async with app.websocket("/audiohook/ws", headers=headers) as ws:
         # Open Transaction
         # https://developer.genesys.cloud/devapps/audiohook/session-walkthrough#open-transaction
         await ws.send_json(
