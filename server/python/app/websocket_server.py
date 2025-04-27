@@ -195,9 +195,11 @@ class WebsocketServer:
 
             # Note: AudioHook currently does not support re-establishing session connections.
             # Set the client session to inactive and remove the temporary client session
-            ws_session = self.active_ws_sessions[session_id]
-            await self.conversations_store.set_active(ws_session.conversation_id, False)
             if session_id in self.active_ws_sessions:
+                ws_session = self.active_ws_sessions[session_id]
+                await self.conversations_store.set_active(
+                    ws_session.conversation_id, False
+                )
                 del self.active_ws_sessions[session_id]
 
     async def disconnect(self, reason: DisconnectReason, message: str, code: int):
