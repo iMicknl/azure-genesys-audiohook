@@ -4,7 +4,7 @@ import audioop
 import io
 import wave
 
-from .enums import MediaFormat
+from ..enums import MediaFormat
 
 
 def convert_to_wav(
