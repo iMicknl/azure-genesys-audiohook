@@ -43,8 +43,8 @@ class Conversation:
 
 
 @dataclass(kw_only=True)
-class TemporaryClientSession:
-    """Temporary in-memory storage for client sessions"""
+class WebSocketSessionStorage:
+    """Temporary in-memory storage for WebSocket session state"""
 
     conversation_id: str | None = None
     raw_audio_buffer: bytes | None = None
@@ -59,8 +59,6 @@ class HealthCheckResponse:
     """Dataclass to model Health Check response"""
 
     status: str
-    connected_clients: int
-    client_sessions: list[Conversation]
 
 
 @dataclass(kw_only=True)

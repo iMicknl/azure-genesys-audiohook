@@ -24,7 +24,8 @@ from .identity import get_azure_credential_async, get_speech_token
 from .models import (
     Conversation,
     ConversationsResponse,
-    TemporaryClientSession,
+    HealthCheckResponse,
+    WebSocketSessionStorage,
 )
 from .storage import upload_blob_file
 
@@ -33,7 +34,7 @@ class WebsocketServer:
     """Websocket server class"""
 
     clients: dict[str, Conversation] = {}
-    temp_clients: dict[str, TemporaryClientSession] = {}
+    active_ws_sessions: dict[str, WebSocketSessionStorage] = {}
     logger: logging.Logger = logging.getLogger(__name__)
     blob_service_client: BlobServiceClient | None = None
     producer_client: EventHubProducerClient | None = None
@@ -98,18 +99,16 @@ class WebsocketServer:
         # TODO: Implement health check logic
         # For example, check if the database and STT connection is healthy
         # or if the external services are reachable.
+        return dataclasses.asdict(HealthCheckResponse(status="online")), 200
 
-        return {"status": "online"}
-
-    async def get_conversations(self):
+    async def get_conversations(self) -> Any:
         """
-        Retrieve conversations.
+        Retrieve a list of conversations.
         """
         # TODO implement pagination
         # TODO implement filtering (active/ended)
-
-        # Use CosmosDBConversationsStore for persistent storage
         conversations = await self.conversations_store.list()
+
         return dataclasses.asdict(
             ConversationsResponse(
                 count=len(conversations),
@@ -117,7 +116,7 @@ class WebsocketServer:
             )
         ), 200
 
-    async def get_conversation(self, conversation_id):
+    async def get_conversation(self, conversation_id) -> Any:
         """
         Retrieve a client session by its conversation ID (not session_id!).
         """
@@ -154,7 +153,7 @@ class WebsocketServer:
             )
 
         # Save new client in persistent storage
-        self.temp_clients[session_id] = TemporaryClientSession()
+        self.active_ws_sessions[session_id] = WebSocketSessionStorage()
 
         correlation_id = headers["Audiohook-Correlation-Id"]
         self.logger.info(f"[{session_id}] Accepted websocket connection from {remote}")
@@ -196,8 +195,8 @@ class WebsocketServer:
             if conversation:
                 conversation.active = False
                 await self.conversations_store.set(session_id, conversation)
-            if session_id in self.temp_clients:
-                del self.temp_clients[session_id]
+            if session_id in self.active_ws_sessions:
+                del self.active_ws_sessions[session_id]
 
             raise
 
@@ -223,11 +222,13 @@ class WebsocketServer:
     ):
         """Send a message to the client."""
         session_id = client_message["id"]
-        self.temp_clients[session_id].server_seq += 1
+        ws_session = self.active_ws_sessions[session_id]
+        ws_session.server_seq += 1
+
         server_message = {
             "version": "2",
             "type": type,
-            "seq": self.temp_clients[session_id].server_seq,
+            "seq": ws_session.server_seq,
             "clientseq": client_message["seq"],
             "id": session_id,
             "parameters": parameters,
@@ -242,15 +243,16 @@ class WebsocketServer:
         message_type = message["type"]
 
         # Validate sequence number
-        if message["seq"] != self.temp_clients[session_id].client_seq + 1:
+        ws_session = self.active_ws_sessions[session_id]
+        if message["seq"] != ws_session.client_seq + 1:
             await self.disconnect(
                 reason=DisconnectReason.ERROR,
-                message=f"Sequence number mismatch: received {message['seq']}, expected {self.temp_clients[session_id].client_seq + 1}",
+                message=f"Sequence number mismatch: received {message['seq']}, expected {ws_session.client_seq + 1}",
                 code=3000,
             )
 
         # Store new sequence number
-        self.temp_clients[session_id].client_seq = message["seq"]
+        ws_session.client_seq = message["seq"]
 
         match message_type:
             case ClientMessageType.OPEN:
@@ -273,19 +275,16 @@ class WebsocketServer:
 
         See https://developer.genesys.cloud/devapps/audiohook/protocol-reference#ping
         """
-        parameters = message["parameters"]
         session_id = message["id"]
-        temp_session = self.temp_clients.get(session_id)
-        if not temp_session or not temp_session.conversation_id:
+        ws_session = self.active_ws_sessions.get(session_id)
+        if not ws_session or not ws_session.conversation_id:
             return
-        conversation_id = temp_session.conversation_id
+        conversation_id = ws_session.conversation_id
         conversation = await self.conversations_store.get(conversation_id)
-
-        if conversation and parameters.get("rtt"):
-            conversation.rtt.append(parameters["rtt"])
-            conversation.last_rtt = parameters["rtt"]
+        if conversation and message["parameters"].get("rtt"):
+            conversation.rtt.append(message["parameters"]["rtt"])
+            conversation.last_rtt = message["parameters"]["rtt"]
             await self.conversations_store.set(conversation_id, conversation)
-
         await self.send_message(type=ServerMessageType.PONG, client_message=message)
 
     async def handle_open_message(self, message: dict):
@@ -329,7 +328,8 @@ class WebsocketServer:
         )
 
         # Store conversation_id in the temp session
-        self.temp_clients[session_id].conversation_id = conversation_id
+        ws_session = self.active_ws_sessions[session_id]
+        ws_session.conversation_id = conversation_id
 
         # Save/update persistent state
         conversation = Conversation(
@@ -380,14 +380,14 @@ class WebsocketServer:
         """Handle close message"""
         parameters = message["parameters"]
         session_id = message["id"]
-        temp_session = self.temp_clients[session_id]
-        conversation_id = temp_session.conversation_id
+        ws_session = self.active_ws_sessions[session_id]
+        conversation_id = ws_session.conversation_id
 
         conversation = await self.conversations_store.get(conversation_id)
 
         # Close audio buffer (and recognition) if the session is ended
-        if temp_session and temp_session.audio_buffer:
-            temp_session.audio_buffer.close()
+        if ws_session and ws_session.audio_buffer:
+            ws_session.audio_buffer.close()
 
         if parameters["reason"] == CloseReason.END:
             if conversation and conversation.media:
@@ -402,7 +402,7 @@ class WebsocketServer:
                 # TODO retrieve raw bytes from PushAudioInputStream to avoid saving two buffers
                 wav_file = convert_to_wav(
                     format=conversation.media["format"],
-                    audio_data=temp_session.raw_audio_buffer,
+                    audio_data=ws_session.raw_audio_buffer,
                     channels=len(conversation.media["channels"]),
                     sample_width=2,
                     frame_rate=conversation.media["rate"],
@@ -450,8 +450,8 @@ class WebsocketServer:
             if conversation:
                 conversation.active = False
                 await self.conversations_store.set(conversation_id, conversation)
-            if session_id in self.temp_clients:
-                del self.temp_clients[session_id]
+            if session_id in self.active_ws_sessions:
+                del self.active_ws_sessions[session_id]
 
     async def handle_connection_probe(self, message: dict):
         """
@@ -485,13 +485,13 @@ class WebsocketServer:
 
         position=\frac{samplesProcessed}{sampleRate}
         """
-        temp_session = self.temp_clients.get(session_id)
-        if not temp_session or not temp_session.conversation_id:
+        ws_session = self.active_ws_sessions.get(session_id)
+        if not ws_session or not ws_session.conversation_id:
             return
-        conversation_id = temp_session.conversation_id
+        conversation_id = ws_session.conversation_id
         conversation = await self.conversations_store.get(conversation_id)
         media = conversation.media if conversation else None
-        if temp_session.audio_buffer is None:
+        if ws_session.audio_buffer is None:
             self.logger.info(
                 f"[{session_id}] type {media['type']}, format {media['format']}, rate {media['rate']}, channels {len(media['channels'])}"
             )
@@ -504,17 +504,17 @@ class WebsocketServer:
             )
 
             stream = speechsdk.audio.PushAudioInputStream(stream_format=audio_format)
-            temp_session.audio_buffer = stream
-            temp_session.raw_audio_buffer = bytearray()
+            ws_session.audio_buffer = stream
+            ws_session.raw_audio_buffer = bytearray()
 
             # Start the synchronous speech recognition as a asyncio task
-            temp_session.recognize_task = asyncio.create_task(
+            ws_session.recognize_task = asyncio.create_task(
                 self.recognize_speech(session_id)
             )
 
         # Append the buffers to the audio stream
-        temp_session.audio_buffer.write(data)
-        temp_session.raw_audio_buffer += data
+        ws_session.audio_buffer.write(data)
+        ws_session.raw_audio_buffer += data
 
     async def send_event(
         self,
@@ -545,10 +545,10 @@ class WebsocketServer:
 
         # Determine speech configuration based on channel count and authentication method
         # Use multichannel (preview) for stereo calls
-        temp_session = self.temp_clients.get(session_id)
-        if not temp_session or not temp_session.conversation_id:
+        ws_session = self.active_ws_sessions.get(session_id)
+        if not ws_session or not ws_session.conversation_id:
             return
-        conversation_id = temp_session.conversation_id
+        conversation_id = ws_session.conversation_id
         conversation = await self.conversations_store.get(conversation_id)
         is_multichannel = (
             len(conversation.media["channels"]) > 1
@@ -611,7 +611,7 @@ class WebsocketServer:
         )
 
         audio_config = speechsdk.audio.AudioConfig(
-            stream=self.temp_clients[session_id].audio_buffer
+            stream=self.active_ws_sessions[session_id].audio_buffer
         )
         speech_recognizer = speechsdk.SpeechRecognizer(
             speech_config=speech_config,
@@ -656,11 +656,10 @@ class WebsocketServer:
 
             # Store transcript in persistent storage
             async def update_transcript():
-                temp_session = self.temp_clients.get(session_id)
-                if not temp_session or not temp_session.conversation_id:
-                    return
-                conversation_id = temp_session.conversation_id
-                conversation = await self.conversations_store.get(conversation_id)
+                ws_session = self.active_ws_sessions[session_id]
+                conversation = await self.conversations_store.get(
+                    ws_session.conversation_id
+                )
                 if conversation:
                     conversation.transcript.append(
                         {
