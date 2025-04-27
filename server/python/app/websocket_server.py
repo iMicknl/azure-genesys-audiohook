@@ -12,7 +12,7 @@ from azure.storage.blob.aio import BlobServiceClient
 from quart import Quart, websocket
 
 from .audio import convert_to_wav
-from .conversations_store import get_conversations_store
+from .conversations_store import ConversationsStore, get_conversations_store
 from .enums import (
     AzureGenesysEvent,
     ClientMessageType,
@@ -38,6 +38,7 @@ class WebsocketServer:
     logger: logging.Logger = logging.getLogger(__name__)
     blob_service_client: BlobServiceClient | None = None
     producer_client: EventHubProducerClient | None = None
+    conversations_store: ConversationsStore | None = None
 
     def __init__(self):
         """Initialize the server"""
@@ -273,17 +274,15 @@ class WebsocketServer:
 
         See https://developer.genesys.cloud/devapps/audiohook/protocol-reference#ping
         """
+        await self.send_message(type=ServerMessageType.PONG, client_message=message)
+
         session_id = message["id"]
-        ws_session = self.active_ws_sessions.get(session_id)
-        if not ws_session or not ws_session.conversation_id:
-            return
-        conversation_id = ws_session.conversation_id
-        conversation = await self.conversations_store.get(conversation_id)
+        ws_session = self.active_ws_sessions[session_id]
+        conversation = await self.conversations_store.get(ws_session.conversation_id)
         if conversation and message["parameters"].get("rtt"):
             conversation.rtt.append(message["parameters"]["rtt"])
             conversation.last_rtt = message["parameters"]["rtt"]
-            await self.conversations_store.set(conversation_id, conversation)
-        await self.send_message(type=ServerMessageType.PONG, client_message=message)
+            await self.conversations_store.set(ws_session.conversation_id, conversation)
 
     async def handle_open_message(self, message: dict):
         """

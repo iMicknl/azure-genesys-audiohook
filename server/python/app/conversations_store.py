@@ -121,4 +121,6 @@ def get_conversations_store():
     """
     if os.environ.get("COSMOSDB_ENDPOINT") and os.environ.get("COSMOSDB_KEY"):
         return CosmosDBConversationsStore()
+
+    # Fallback to in-memory store if no CosmosDB credentials are provided
     return InMemoryConversationsStore()
