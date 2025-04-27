@@ -44,7 +44,10 @@ class WebsocketServer:
     def setup_routes(self):
         """Setup the routes for the server"""
         self.app.route("/")(self.health_check)
-        self.app.route("/conversation/<conversation_id>")(self.get_conversation)
+
+        self.app.route("/api/conversations")(self.get_conversations)
+        self.app.route("/api/conversation/<conversation_id>")(self.get_conversation)
+
         self.app.websocket("/ws")(self.ws)
 
     async def create_connections(self):
@@ -80,6 +83,10 @@ class WebsocketServer:
 
     async def health_check(self):
         """Health check endpoint"""
+        return {"status": "online"}
+
+    async def get_conversations(self):
+        """Retrieve (active) conversations."""
         # TODO this won't show the right details when used with multiple workers (each worker will have its own memory storage)
         # Remove audio buffer from the response to avoid serialization issues
         connected_clients = {
