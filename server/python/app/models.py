@@ -46,6 +46,7 @@ class ClientSession:
 class TemporaryClientSession:
     """Temporary in-memory storage for client sessions"""
 
+    conversation_id: str | None = None
     raw_audio_buffer: bytes | None = None
     audio_buffer: speechsdk.audio.PushAudioInputStream | None = None
     recognize_task: asyncio.Task | None = None
