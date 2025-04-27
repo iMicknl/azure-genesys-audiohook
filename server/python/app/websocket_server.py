@@ -634,13 +634,23 @@ class WebsocketServer:
             elif text and not text[0].isupper():
                 text = text[0].upper() + text[1:]
 
+            # Calculate start and end time in seconds
+            offset_100ns = json_data.get("Offset", 0)
+            duration_100ns = json_data.get("Duration", 0)
+            start_sec = offset_100ns / 10_000_000
+            end_sec = (offset_100ns + duration_100ns) / 10_000_000
+
+            def to_iso8601(seconds):
+                return f"PT{seconds:.2f}S"
+
             # Store transcript in persistent storage
             async def update_transcript():
                 ws_session = self.active_ws_sessions[session_id]
-
                 transcript_item = {
                     "channel": json_data["Channel"] if is_multichannel else None,
                     "text": text,
+                    "start": to_iso8601(start_sec),
+                    "end": to_iso8601(end_sec),
                 }
 
                 await self.conversations_store.append_transcript(
@@ -649,7 +659,7 @@ class WebsocketServer:
 
             asyncio.run_coroutine_threadsafe(update_transcript(), loop)
 
-            # Send transcript to Event Hub
+            # Send transcript to Event Hub (add start/end in ISO 8601)
             asyncio.run_coroutine_threadsafe(
                 self.send_event(
                     event=AzureGenesysEvent.PARTIAL_TRANSCRIPT,
@@ -657,6 +667,8 @@ class WebsocketServer:
                     message={
                         "text": text,
                         "channel": json_data["Channel"] if is_multichannel else None,
+                        "start": to_iso8601(start_sec),
+                        "end": to_iso8601(end_sec),
                         "data": json_data,
                     },
                 ),
