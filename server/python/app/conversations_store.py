@@ -64,6 +64,9 @@ class CosmosDBConversationsStore(ConversationsStore):
         data = dataclasses.asdict(conversation)
         data["id"] = conversation_id
         data["conversation_id"] = conversation_id
+
+        # TODO use patch instead of upsert for certain operations (e.g. transcript/rtt)
+        # to avoid overwriting the entire document
         await container.upsert_item(data)
 
     async def delete(self, conversation_id: str):
