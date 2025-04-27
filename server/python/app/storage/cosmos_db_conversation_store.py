@@ -6,7 +6,7 @@ from azure.cosmos.exceptions import CosmosResourceNotFoundError
 
 from ..models import Conversation
 from ..utils.identity import get_azure_credential_async
-from .conversation_store import ConversationStore
+from .base_conversation_store import ConversationStore
 
 
 class CosmosDBConversationStore(ConversationStore):

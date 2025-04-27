@@ -23,7 +23,8 @@ from .models import (
     HealthCheckResponse,
     WebSocketSessionStorage,
 )
-from .storage.conversation_store import ConversationStore, get_conversations_store
+from .storage.base_conversation_store import ConversationStore
+from .storage.conversation_store import get_conversation_store
 from .utils.audio import convert_to_wav
 from .utils.identity import get_azure_credential_async, get_speech_token
 from .utils.storage import upload_blob_file
@@ -79,7 +80,7 @@ class WebsocketServer:
                 eventhub_name=os.environ["AZURE_EVENT_HUB_NAME"],
             )
 
-        self.conversations_store = get_conversations_store()
+        self.conversations_store = get_conversation_store()
 
     async def close_connections(self):
         """Close connections after serving"""

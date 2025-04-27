@@ -1,5 +1,5 @@
 from ..models import Conversation
-from .conversation_store import ConversationStore
+from .base_conversation_store import ConversationStore
 
 
 class InMemoryConversationStore(ConversationStore):
