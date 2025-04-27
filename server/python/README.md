@@ -37,7 +37,27 @@ uv run server.py
 During development, you can use the [Genesys AudioHook Sample Service](https://github.com/purecloudlabs/audiohook-reference-implementation/tree/main/client) to test the server. This client implements the Genesys AudioHook protocol and sends event and audio data to the websocket server. It supports both secure (wss) and insecure (ws) connections. Run the command below to start the client, ensuring the API key and secret match your environment variables.
 
 ```bash
-npm start --uri ws://host.docker.internal:5001/ws --api-key your_api_key --client-secret your_secret --wavfile your_audio.wav
+cd client
+npm install
+```
+If you are deploying this repo using a container (devcontainers), and your service is being served in localhost, and you want to run the Genesys client in the host OS, make sure that you firewall rules for WSL are correctly setup (in your Windows Host). Run the following commands in PowerSheel as an administrator:
+```
+New-NetFirewallRule -DisplayName "WSL" -Direction Inbound  -InterfaceAlias "vEthernet (WSL (Hyper-V firewall))"  -Action Allow
+New-NetFirewallRule -DisplayName "Allow Port 5000" -Direction Inbound -LocalPort 5000 -Protocol TCP -Action Allow
+```
+Also, if you are using WSL, which would be your case if you are using devcontainers in windows, make sure to mirror your networking in wsl by creating a ~/.wslconfig with the following (in your Windows home location):
+
+```
+[wsl2]
+networkingMode=mirrored
+```
+
+Then you can start your client:
+```bash
+npm start --uri ws://host.docker.internal:5000/ws --api-key your_api_key --client-secret your_secret --wavfile your_audio.wav
+
+OR
+npm start -- --uri ws://localhost:5000/ws --api-key your_api_key --client-secret  your_secret --wavfile your_audio.wav
 ```
 
 To perform a load test on your websocket server, use the `--session-count` parameter to set the number of concurrent sessions.
