@@ -34,3 +34,7 @@ class ConversationStore:
     async def append_transcript(self, conversation_id: str, item: dict):
         """Append an item to the conversation's transcript list."""
         raise NotImplementedError
+
+    async def close(self):
+        """Close the conversation store and release resources."""
+        raise NotImplementedError

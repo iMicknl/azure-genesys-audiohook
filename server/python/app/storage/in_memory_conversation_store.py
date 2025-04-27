@@ -52,3 +52,7 @@ class InMemoryConversationStore(ConversationStore):
         if conversation:
             conversation.transcript.append(item)
             await self.set(conversation)
+
+    async def close(self):
+        """Clear the in-memory conversation store."""
+        self._store.clear()

@@ -90,6 +90,9 @@ class WebsocketServer:
         if self.producer_client:
             await self.producer_client.close()
 
+        if self.conversations_store:
+            await self.conversations_store.close()
+
     async def health_check(self):
         """
         Health check endpoint

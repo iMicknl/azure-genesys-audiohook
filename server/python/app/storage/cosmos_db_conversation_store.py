@@ -119,3 +119,8 @@ class CosmosDBConversationStore(ConversationStore):
             partition_key=conversation_id,
             patch_operations=[{"op": "add", "path": "/transcript/-", "value": item}],
         )
+
+    async def close(self):
+        """Close the Cosmos DB client connection."""
+        if hasattr(self, "client") and self.client:
+            await self.client.close()
