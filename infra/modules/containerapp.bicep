@@ -67,6 +67,10 @@ resource containerApp 'Microsoft.App/containerApps@2024-10-02-preview' = {
           image: containerImage
           env: [
             {
+              name: 'AZURE_SPEECH_LANGUAGES'
+              value: 'en-US'
+            }
+            {
               name: 'AZURE_OPENAI_ENDPOINT'
               value: openAiEndpoint
             }
