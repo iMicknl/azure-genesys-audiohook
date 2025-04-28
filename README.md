@@ -6,8 +6,14 @@ This AudioHook server lets you use your own speech processing pipeline—includi
 
 Real-time transcripts unlock advanced call center analytics, powering live summarization, agent coaching, and instant question answering to enhance customer experience and operational efficiency.
 
-- [Python WebSocket server](./server/python)
 
-## Architecture
+## Components
+
+AudioHook processing is decoupled from AI services, supporting flexible deployment, robust security, and easy integration with enterprise systems. The modular design allows horizontal scaling and rapid customization of the AI pipeline for evolving contact center needs.
+
+- [AudioHook WebSocket server (Python)](./server/python)
+- Real-Time AI service (Python) (_coming soon_)
+
+### Architecture
 
 ![Real-time architecture](./docs/images/real-time-architecture.png)
