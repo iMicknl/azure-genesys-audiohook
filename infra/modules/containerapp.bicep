@@ -122,9 +122,8 @@ resource containerApp 'Microsoft.App/containerApps@2024-10-02-preview' = {
         maxReplicas: 10
         rules: [
           {
-            name: 'concurrent-requests-scaler'
-            custom: {
-              type: 'concurrentRequests'
+            name: 'http-scaler'
+            http: {
               metadata: {
                 concurrentRequests: '100'
               }
@@ -135,7 +134,8 @@ resource containerApp 'Microsoft.App/containerApps@2024-10-02-preview' = {
             custom: {
               type: 'cpu'
               metadata: {
-                utilization: '70'
+                type: 'Utilization'
+                value: '70'
               }
             }
           }
