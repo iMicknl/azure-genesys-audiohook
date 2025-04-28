@@ -120,6 +120,26 @@ resource containerApp 'Microsoft.App/containerApps@2024-10-02-preview' = {
       scale: {
         minReplicas: 1
         maxReplicas: 10
+        rules: [
+          {
+            name: 'concurrent-requests-scaler'
+            custom: {
+              type: 'concurrentRequests'
+              metadata: {
+                concurrentRequests: '100'
+              }
+            }
+          }
+          {
+            name: 'cpu-scaler'
+            custom: {
+              type: 'cpu'
+              metadata: {
+                utilization: '70'
+              }
+            }
+          }
+        ]
       }
     }
   }
