@@ -12,7 +12,8 @@ Real-time transcripts unlock advanced call center analytics, powering live summa
 AudioHook processing is decoupled from AI services, supporting flexible deployment, robust security, and easy integration with enterprise systems. The modular design allows horizontal scaling and rapid customization of the AI pipeline for evolving contact center needs.
 
 - [AudioHook WebSocket server (Python)](./server/python)
-- Real-Time AI service (Python) (_coming soon_)
+- Real-time AI processing service (Python, Semantic Kernel) (_coming soon_)
+- Demo front-end (JavaScript, React) with back-end (Python) (_coming soon_)
 
 ### Architecture
 
