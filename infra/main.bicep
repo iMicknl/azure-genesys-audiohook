@@ -79,6 +79,7 @@ module containerAppRoleAssignments 'modules/containerapp-roles.bicep' = {
     openAiId: cognitive.outputs.openAiId
     speechId: cognitive.outputs.speechId
     cosmosDbAccountName: cosmosdb.outputs.cosmosDbAccountName
+    cosmosDbDataContributorRoleDefinitionId: cosmosdb.outputs.cosmosDbDataContributorRoleDefinitionId
   }
 }
 

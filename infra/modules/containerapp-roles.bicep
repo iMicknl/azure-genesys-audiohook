@@ -15,6 +15,21 @@ resource cosmosDbAccount 'Microsoft.DocumentDB/databaseAccounts@2023-04-15' exis
   name: cosmosDbAccountName
 }
 
+// Add Cosmos DB data plane role assignment
+@description('The Cosmos DB Built-in Data Contributor data plane role definition id')
+param cosmosDbDataContributorRoleDefinitionId string
+
+resource cosmosDbDataPlaneRoleAssignment 'Microsoft.DocumentDB/databaseAccounts/sqlRoleAssignments@2024-05-15' = {
+  name: guid(cosmosDbAccount.id, containerAppPrincipalId, cosmosDbDataContributorRoleDefinitionId)
+  parent: cosmosDbAccount
+  properties: {
+    principalId: containerAppPrincipalId
+    roleDefinitionId: cosmosDbDataContributorRoleDefinitionId
+    scope: cosmosDbAccount.id
+  }
+}
+
+
 resource openAiRoleAssignment 'Microsoft.Authorization/roleAssignments@2022-04-01' = {
   name: guid(openAiId, containerAppPrincipalId, 'Cognitive Services User')
   scope: openAiResource
@@ -31,16 +46,6 @@ resource speechRoleAssignment 'Microsoft.Authorization/roleAssignments@2022-04-0
   scope: speechResource
   properties: {
     roleDefinitionId: subscriptionResourceId('Microsoft.Authorization/roleDefinitions', 'f2dc8367-1007-4938-bd23-fe263f013447')
-    principalId: containerAppPrincipalId
-    principalType: 'ServicePrincipal'
-  }
-}
-
-resource cosmosDbRoleAssignment 'Microsoft.Authorization/roleAssignments@2022-04-01' = {
-  name: guid(cosmosDbAccount.id, containerAppPrincipalId, 'CosmosDB Built-in Data Contributor')
-  scope: cosmosDbAccount
-  properties: {
-    roleDefinitionId: subscriptionResourceId('Microsoft.Authorization/roleDefinitions', 'b24988ac-6180-42a0-ab88-20f7382dd24c')
     principalId: containerAppPrincipalId
     principalType: 'ServicePrincipal'
   }
