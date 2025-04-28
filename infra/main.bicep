@@ -66,7 +66,7 @@ module containerapp 'modules/containerapp.bicep' = {
     cosmosDbDatabase: cosmosdb.outputs.cosmosDbDatabaseName
     cosmosDbContainer: cosmosdb.outputs.cosmosDbContainerName
     // TODO store as secrets or in a KeyVault
-    websocketServerApiKey: '${uniqueString(subscription().id, environmentName, 'wsapikey1')}${uniqueString(subscription().id, environmentName, 'wsapikey2')}'
+    websocketServerApiKey: '${uniqueString(subscription().id, environmentName, 'wsapikey')}${uniqueString(subscription().id, environmentName, 'wsapikey2')}'
     websocketServerClientSecret: websocketServerClientSecret
   }
 }

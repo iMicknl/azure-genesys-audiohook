@@ -14,9 +14,11 @@ param websocketServerApiKey string
 @secure()
 param websocketServerClientSecret string
 
-var containerAppName = 'ca-${environmentName}-${uniqueSuffix}'
-var containerEnvName = 'cae-${environmentName}-${uniqueSuffix}'
-var logAnalyticsName = 'log-${environmentName}-${uniqueSuffix}'
+// Helper to sanitize environmentName for valid container app name
+var sanitizedEnvName = toLower(replace(replace(replace(replace(environmentName, ' ', '-'), '--', '-'), '[^a-zA-Z0-9-]', ''), '_', '-'))
+var containerAppName = take('ca-${sanitizedEnvName}-${uniqueSuffix}', 32)
+var containerEnvName = take('cae-${sanitizedEnvName}-${uniqueSuffix}', 32)
+var logAnalyticsName = take('log-${sanitizedEnvName}-${uniqueSuffix}', 63)
 
 resource logAnalytics 'Microsoft.OperationalInsights/workspaces@2022-10-01' = {
   name: logAnalyticsName
@@ -117,6 +119,7 @@ resource containerApp 'Microsoft.App/containerApps@2024-10-02-preview' = {
           }
         }
       ]
+      // TODO add memory/cpu scaling
       scale: {
         minReplicas: 1
         maxReplicas: 10
@@ -126,16 +129,6 @@ resource containerApp 'Microsoft.App/containerApps@2024-10-02-preview' = {
             http: {
               metadata: {
                 concurrentRequests: '100'
-              }
-            }
-          }
-          {
-            name: 'cpu-scaler'
-            custom: {
-              type: 'cpu'
-              metadata: {
-                type: 'Utilization'
-                value: '70'
               }
             }
           }
