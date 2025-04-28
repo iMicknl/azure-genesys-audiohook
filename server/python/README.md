@@ -96,7 +96,9 @@ gunicorn server:app
 
 ### Deploy to Azure
 
-This repository doesn't provide an infrastructure as code (IaC) solution for deploying the server to Azure. However, you can leverage the Azure CLI to deploy the server to Azure Container Apps. Run the command below to deploy the server to Azure Container Apps.
+This repository doesn't provide an infrastructure as code (IaC) solution for deploying the server to Azure yet. However, you can leverage the Azure CLI to deploy the server to Azure Container Apps. Run the command below to deploy the server to Azure Container Apps.
+
+You will need to seperately deploy additional services (e.g. Azure AI Speech, Azure CosmosDB) and add them to your environment variables during deployment.
 
 ```bash
 az containerapp up --resource-group your-resource-group \
