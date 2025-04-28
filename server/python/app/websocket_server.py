@@ -572,7 +572,7 @@ class WebsocketServer:
         else:
             auto_detect_source_language_config = (
                 speechsdk.languageconfig.AutoDetectSourceLanguageConfig(
-                    languages=["en-US", "nl-NL"]
+                    languages=languages
                 )
             )
             speech_config.set_property(
