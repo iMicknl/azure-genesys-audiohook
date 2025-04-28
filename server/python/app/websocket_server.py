@@ -5,8 +5,6 @@ import os
 from typing import Any
 
 import azure.cognitiveservices.speech as speechsdk
-from azure.eventhub import EventData
-from azure.eventhub.aio import EventHubProducerClient
 from azure.storage.blob.aio import BlobServiceClient
 from quart import Quart, request, websocket
 
@@ -17,6 +15,7 @@ from .enums import (
     DisconnectReason,
     ServerMessageType,
 )
+from .events.event_publisher import EventPublisher
 from .models import (
     Conversation,
     ConversationsResponse,
@@ -33,12 +32,11 @@ from .utils.storage import upload_blob_file
 class WebsocketServer:
     """Websocket server class"""
 
-    clients: dict[str, Conversation] = {}
     active_ws_sessions: dict[str, WebSocketSessionStorage] = {}
     logger: logging.Logger = logging.getLogger(__name__)
     blob_service_client: BlobServiceClient | None = None
-    producer_client: EventHubProducerClient | None = None
     conversations_store: ConversationStore | None = None
+    event_publisher: EventPublisher | None = None
 
     def __init__(self):
         """Initialize the server"""
@@ -46,7 +44,6 @@ class WebsocketServer:
         self.setup_routes()
         self.app.before_serving(self.create_connections)
         self.app.after_serving(self.close_connections)
-        self.conversations_store = None
 
     def setup_routes(self):
         """Setup the routes for the server"""
@@ -68,27 +65,20 @@ class WebsocketServer:
                 account_url, credential=get_azure_credential_async()
             )
 
-        if fully_qualified_namespace := os.getenv("AZURE_EVENT_HUB_HOSTNAME"):
-            self.producer_client = EventHubProducerClient(
-                fully_qualified_namespace=fully_qualified_namespace,
-                eventhub_name=os.environ["AZURE_EVENT_HUB_NAME"],
-                credential=get_azure_credential_async(),
-            )
-        elif connection_string := os.getenv("AZURE_EVENT_HUB_CONNECTION_STRING"):
-            self.producer_client = EventHubProducerClient.from_connection_string(
-                conn_str=connection_string,
-                eventhub_name=os.environ["AZURE_EVENT_HUB_NAME"],
-            )
-
         self.conversations_store = get_conversation_store()
+
+        if os.getenv("AZURE_EVENT_HUB_HOSTNAME") or os.getenv(
+            "AZURE_EVENT_HUB_CONNECTION_STRING"
+        ):
+            self.event_publisher = EventPublisher()
 
     async def close_connections(self):
         """Close connections after serving"""
         if self.blob_service_client:
             await self.blob_service_client.close()
 
-        if self.producer_client:
-            await self.producer_client.close()
+        if self.event_publisher:
+            await self.event_publisher.close()
 
         if self.conversations_store:
             await self.conversations_store.close()
@@ -123,7 +113,7 @@ class WebsocketServer:
 
     async def get_conversation(self, conversation_id) -> Any:
         """
-        Retrieve a client session by its conversation ID (not session_id!).
+        Retrieve a client session by its conversation ID.
         """
         conversation = await self.conversations_store.get(conversation_id)
         if conversation:
@@ -196,9 +186,11 @@ class WebsocketServer:
 
             # Note: AudioHook currently does not support re-establishing session connections.
             # Set the client session to inactive and remove the temporary client session
-            ws_session = self.active_ws_sessions[session_id]
-            await self.conversations_store.set_active(ws_session.conversation_id, False)
             if session_id in self.active_ws_sessions:
+                ws_session = self.active_ws_sessions[session_id]
+                await self.conversations_store.set_active(
+                    ws_session.conversation_id, False
+                )
                 del self.active_ws_sessions[session_id]
 
     async def disconnect(self, reason: DisconnectReason, message: str, code: int):
@@ -338,6 +330,7 @@ class WebsocketServer:
             ani_name=ani_name,
             dnis=dnis,
             media=selected_media,
+            position=position,
         )
         await self.conversations_store.set(conversation)
 
@@ -357,6 +350,7 @@ class WebsocketServer:
                 event=AzureGenesysEvent.SESSION_STARTED,
                 session_id=session_id,
                 message={
+                    "ani": ani,
                     "ani-name": ani_name,
                     "conversation-id": conversation_id,
                     "dnis": dnis,
@@ -517,33 +511,26 @@ class WebsocketServer:
         message: dict[str, Any],
         properties: dict[str, str] | None = {},
     ):
-        """Send an JSON event to Azure Event Hub."""
-        if self.producer_client:
-            event_data_batch = await self.producer_client.create_batch()
-            event_data = EventData(json.dumps(message))
-            event_data.properties = {
-                "event-type": f"azure-genesys-audiohook.{event}",
-                "session-id": session_id,
-            }
-
-            if properties:
-                event_data.properties.update(properties)
-
-            event_data_batch.add(event_data)
-            await self.producer_client.send_batch(event_data_batch)
-
-            self.logger.debug(f"[{session_id}] Sending event: {event_data}")
+        """Send an JSON event to Azure Event Hub using the EventPublisher abstraction."""
+        if self.event_publisher:
+            ws_session = self.active_ws_sessions[session_id]
+            await self.event_publisher.send_event(
+                event_type=f"azure-genesys-audiohook.{event}",
+                conversation_id=ws_session.conversation_id,
+                message=message,
+                properties=properties,
+            )
+            self.logger.debug(f"[{session_id}] Sending event: {event} {message}")
 
     async def recognize_speech(self, session_id: str):
         """Recognize speech from audio buffer using Azure Speech to Text."""
 
         # Determine speech configuration based on channel count and authentication method
         # Use multichannel (preview) for stereo calls
-        ws_session = self.active_ws_sessions.get(session_id)
-        if not ws_session or not ws_session.conversation_id:
-            return
+        ws_session = self.active_ws_sessions[session_id]
         conversation_id = ws_session.conversation_id
         conversation = await self.conversations_store.get(conversation_id)
+
         is_multichannel = (
             len(conversation.media["channels"]) > 1
             if conversation and conversation.media
@@ -648,13 +635,23 @@ class WebsocketServer:
             elif text and not text[0].isupper():
                 text = text[0].upper() + text[1:]
 
+            # Calculate start and end time in seconds
+            offset_100ns = json_data.get("Offset", 0)
+            duration_100ns = json_data.get("Duration", 0)
+            start_sec = offset_100ns / 10_000_000
+            end_sec = (offset_100ns + duration_100ns) / 10_000_000
+
+            def to_iso8601(seconds):
+                return f"PT{seconds:.2f}S"
+
             # Store transcript in persistent storage
             async def update_transcript():
                 ws_session = self.active_ws_sessions[session_id]
-
                 transcript_item = {
                     "channel": json_data["Channel"] if is_multichannel else None,
                     "text": text,
+                    "start": to_iso8601(start_sec),
+                    "end": to_iso8601(end_sec),
                 }
 
                 await self.conversations_store.append_transcript(
@@ -663,7 +660,7 @@ class WebsocketServer:
 
             asyncio.run_coroutine_threadsafe(update_transcript(), loop)
 
-            # Send transcript to Event Hub
+            # Send transcript to Event Hub (add start/end in ISO 8601)
             asyncio.run_coroutine_threadsafe(
                 self.send_event(
                     event=AzureGenesysEvent.PARTIAL_TRANSCRIPT,
@@ -671,6 +668,8 @@ class WebsocketServer:
                     message={
                         "text": text,
                         "channel": json_data["Channel"] if is_multichannel else None,
+                        "start": to_iso8601(start_sec),
+                        "end": to_iso8601(end_sec),
                         "data": json_data,
                     },
                 ),

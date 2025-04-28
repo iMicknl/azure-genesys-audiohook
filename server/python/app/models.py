@@ -35,6 +35,7 @@ class Conversation(BaseModel):
     ani_name: str
     dnis: str
     media: dict[str, Any]
+    position: str
     rtt: list[str] = Field(default_factory=list)
     transcript: list[dict[str, Any]] = Field(default_factory=list)
 
