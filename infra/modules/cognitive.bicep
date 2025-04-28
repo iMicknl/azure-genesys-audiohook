@@ -25,16 +25,16 @@ resource gpt4oDeployment 'Microsoft.CognitiveServices/accounts/deployments@2023-
   parent: openAi
   name: modelDeploymentName
   sku: {
-    name: 'DataZoneStandard'
+    name: 'GlobalStandard'
     capacity: 30
   }
   properties: {
     model: {
       format: 'OpenAI'
       name: modelDeploymentName
-      version: '2024-11-20'
+      version: '2025-04-14'
     }
-    raiPolicyName: 'Microsoft.Default'
+    raiPolicyName: 'Microsoft.DefaultV2'
   }
 }
 

@@ -24,7 +24,6 @@ resource cosmosDbAccount 'Microsoft.DocumentDB/databaseAccounts@2023-04-15' = {
     consistencyPolicy: {
       defaultConsistencyLevel: 'Session'
     }
-    enableFreeTier: true
     publicNetworkAccess: 'Enabled'
     capabilities: [
       {
@@ -69,7 +68,6 @@ resource cosmosDbContainer 'Microsoft.DocumentDB/databaseAccounts/sqlDatabases/c
       }
     }
     options: {
-      throughput: 400
     }
   }
 }
