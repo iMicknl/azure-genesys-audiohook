@@ -62,6 +62,8 @@ module containerapp 'modules/containerapp.bicep' = {
     cosmosDbEndpoint: cosmosdb.outputs.cosmosDbAccountEndpoint
     cosmosDbDatabase: cosmosdb.outputs.cosmosDbDatabaseName
     cosmosDbContainer: cosmosdb.outputs.cosmosDbContainerName
+    websocketServerApiKey: uniqueString(subscription().id, environmentName, 'wsapikey')
+    websocketServerClientSecret: uniqueString(subscription().id, environmentName, 'wsclientsecret')
   }
 }
 

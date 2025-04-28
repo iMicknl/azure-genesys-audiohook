@@ -9,6 +9,10 @@ param modelDeploymentName string
 param cosmosDbEndpoint string
 param cosmosDbDatabase string
 param cosmosDbContainer string
+@secure()
+param websocketServerApiKey string
+@secure()
+param websocketServerClientSecret string
 
 var containerAppName = 'ca-${environmentName}-${uniqueSuffix}'
 var containerEnvName = 'cae-${environmentName}-${uniqueSuffix}'
@@ -97,6 +101,14 @@ resource containerApp 'Microsoft.App/containerApps@2024-10-02-preview' = {
             {
               name: 'AZURE_COSMOSDB_CONTAINER'
               value: cosmosDbContainer
+            }
+            {
+              name: 'WEBSOCKET_SERVER_API_KEY'
+              value: websocketServerApiKey
+            }
+            {
+              name: 'WEBSOCKET_SERVER_CLIENT_SECRET'
+              value: websocketServerClientSecret
             }
           ]
           resources: {
