@@ -9,7 +9,7 @@
             "value": "${AZURE_LOCATION}"
         },
         "containerImage": {
-            "value": "ghcr.io/imicknl/azure-podcast-generator:latest"
+            "value": "ghcr.io/imicknl/azure-genesys-audiohook-server:latest"
         }
     }
 }
