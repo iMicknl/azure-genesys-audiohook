@@ -22,7 +22,8 @@ resource eventHubNamespace 'Microsoft.EventHub/namespaces@2022-10-01-preview' = 
 }
 
 resource eventHub 'Microsoft.EventHub/namespaces/eventhubs@2022-10-01-preview' = {
-  name: '${eventHubNamespace.name}/${eventHubName}'
+  parent: eventHubNamespace
+  name: eventHubName
   properties: {
     messageRetentionInDays: 1
     partitionCount: 2
@@ -30,7 +31,8 @@ resource eventHub 'Microsoft.EventHub/namespaces/eventhubs@2022-10-01-preview' =
 }
 
 resource eventHubAuthRule 'Microsoft.EventHub/namespaces/eventhubs/authorizationRules@2022-10-01-preview' = {
-  name: '${eventHubNamespace.name}/${eventHubName}/sendListenRule'
+  name: 'sendListenRule'
+  parent: eventHub
   properties: {
     rights: [
       'Send'
@@ -41,4 +43,3 @@ resource eventHubAuthRule 'Microsoft.EventHub/namespaces/eventhubs/authorization
 
 output eventHubNamespaceName string = eventHubNamespace.name
 output eventHubName string = eventHub.name
-output eventHubConnectionString string = listKeys(eventHubAuthRule.id, '2022-10-01-preview').primaryConnectionString
