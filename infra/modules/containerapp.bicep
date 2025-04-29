@@ -13,8 +13,7 @@ param cosmosDbContainer string
 param websocketServerApiKey string
 @secure()
 param websocketServerClientSecret string
-param eventHubNamespaceName string
-param eventHubName string
+param speechRegion string
 
 // Helper to sanitize environmentName for valid container app name
 var sanitizedEnvName = toLower(replace(replace(replace(replace(environmentName, ' ', '-'), '--', '-'), '[^a-zA-Z0-9-]', ''), '_', '-'))
@@ -92,7 +91,7 @@ resource containerApp 'Microsoft.App/containerApps@2024-10-02-preview' = {
             }
             {
               name: 'AZURE_SPEECH_REGION'
-              value: 'westeurope'
+              value: speechRegion
             }
             {
               name: 'AZURE_COSMOSDB_ENDPOINT'
@@ -113,14 +112,6 @@ resource containerApp 'Microsoft.App/containerApps@2024-10-02-preview' = {
             {
               name: 'WEBSOCKET_SERVER_CLIENT_SECRET'
               value: websocketServerClientSecret
-            }
-            {
-              name: 'AZURE_EVENT_HUB_HOSTNAME'
-              value: format('{0}.servicebus.windows.net', eventHubNamespaceName)
-            }
-            {
-              name: 'AZURE_EVENT_HUB_NAME'
-              value: eventHubName
             }
             {
               name: 'DEBUG_MODE'

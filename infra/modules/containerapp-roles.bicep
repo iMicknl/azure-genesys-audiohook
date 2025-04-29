@@ -1,5 +1,3 @@
-param eventHubNamespaceName string
-param eventHubName string
 param containerAppPrincipalId string
 param openAiId string
 param speechId string
@@ -18,22 +16,7 @@ resource cosmosDbAccount 'Microsoft.DocumentDB/databaseAccounts@2023-04-15' exis
   name: cosmosDbAccountName
 }
 
-resource eventHubNamespace 'Microsoft.EventHub/namespaces@2022-10-01-preview' existing = {
-  name: eventHubNamespaceName
-}
-resource eventHub 'Microsoft.EventHub/namespaces/eventhubs@2022-10-01-preview' existing = {
-  name: eventHubName
-  parent: eventHubNamespace
-}
-resource eventHubRoleAssignment 'Microsoft.Authorization/roleAssignments@2022-04-01' = {
-  name: guid(eventHub.id, containerAppPrincipalId, 'Event Hubs Data Sender')
-  scope: eventHub
-  properties: {
-    roleDefinitionId: subscriptionResourceId('Microsoft.Authorization/roleDefinitions', 'bfa99427-4437-4c20-9273-ef80fa1394b7') // Azure Event Hubs Data Sender
-    principalId: containerAppPrincipalId
-    principalType: 'ServicePrincipal'
-  }
-}
+
 
 // Add Cosmos DB data plane role assignment
 

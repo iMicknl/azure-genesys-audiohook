@@ -49,17 +49,6 @@ module cosmosdb 'modules/cosmosdb.bicep' = {
   }
 }
 
-module eventhub 'modules/eventhub.bicep' = {
-  scope: rg
-  name: 'eventhub-deployment'
-  params: {
-    location: location
-    environmentName: environmentName
-    uniqueSuffix: uniqueSuffix
-    tags: tags
-  }
-}
-
 // Deploy container app after cognitive services and storage
 module containerapp 'modules/containerapp.bicep' = {
   scope: rg
@@ -79,8 +68,6 @@ module containerapp 'modules/containerapp.bicep' = {
     // TODO store as secrets or in a KeyVault
     websocketServerApiKey: '${uniqueString(subscription().id, environmentName, 'wsapikey')}${uniqueString(subscription().id, environmentName, 'wsapikey2')}'
     websocketServerClientSecret: websocketServerClientSecret
-    eventHubNamespaceName: eventhub.outputs.eventHubNamespaceName
-    eventHubName: eventhub.outputs.eventHubName
   }
 }
 
@@ -94,8 +81,6 @@ module containerAppRoleAssignments 'modules/containerapp-roles.bicep' = {
     speechId: cognitive.outputs.speechId
     cosmosDbAccountName: cosmosdb.outputs.cosmosDbAccountName
     cosmosDbDataContributorRoleDefinitionId: cosmosdb.outputs.cosmosDbDataContributorRoleDefinitionId
-    eventHubNamespaceName: eventhub.outputs.eventHubNamespaceName
-    eventHubName: eventhub.outputs.eventHubName
   }
 }
 
