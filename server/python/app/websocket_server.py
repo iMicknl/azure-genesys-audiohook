@@ -1,4 +1,5 @@
 import asyncio
+import functools
 import json
 import logging
 import os
@@ -45,12 +46,33 @@ class WebsocketServer:
         self.app.before_serving(self.create_connections)
         self.app.after_serving(self.close_connections)
 
+    def require_api_key(self, func):
+        @functools.wraps(func)
+        async def wrapper(*args, **kwargs):
+            api_key = os.getenv("WEBSOCKET_SERVER_API_KEY")
+            header_key = request.headers.get("X-Api-Key")
+            param_key = request.args.get("key")
+            if api_key and (header_key == api_key or param_key == api_key):
+                return await func(*args, **kwargs)
+            return {
+                "error": {
+                    "code": "unauthorized",
+                    "message": "Invalid or missing API key.",
+                }
+            }, 401
+
+        return wrapper
+
     def setup_routes(self):
         """Setup the routes for the server"""
         self.app.route("/")(self.health_check)
 
-        self.app.route("/api/conversations")(self.get_conversations)
-        self.app.route("/api/conversation/<conversation_id>")(self.get_conversation)
+        self.app.route("/api/conversations")(
+            self.require_api_key(self.get_conversations)
+        )
+        self.app.route("/api/conversation/<conversation_id>")(
+            self.require_api_key(self.get_conversation)
+        )
 
         self.app.websocket("/audiohook/ws")(self.ws)
 
@@ -479,6 +501,8 @@ class WebsocketServer:
         conversation = await self.conversations_store.get(conversation_id)
         media = conversation.media
 
+        self.logger.debug(f"[{session_id}] Received {len(data)} bytes of audio data.")
+
         if ws_session.audio_buffer is None:
             self.logger.info(
                 f"[{session_id}] type {media['type']}, format {media['format']}, rate {media['rate']}, channels {len(media['channels'])}"
@@ -512,7 +536,11 @@ class WebsocketServer:
         properties: dict[str, str] | None = {},
     ):
         """Send an JSON event to Azure Event Hub using the EventPublisher abstraction."""
-        if self.event_publisher:
+        if not self.event_publisher:
+            return
+
+        if session_id in self.active_ws_sessions:
+            # Get the conversation ID from the active WebSocket session
             ws_session = self.active_ws_sessions[session_id]
             await self.event_publisher.send_event(
                 event_type=f"azure-genesys-audiohook.{event}",

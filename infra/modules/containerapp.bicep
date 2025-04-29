@@ -13,10 +13,13 @@ param cosmosDbContainer string
 param websocketServerApiKey string
 @secure()
 param websocketServerClientSecret string
+param speechRegion string
 
-var containerAppName = 'ca-${environmentName}-${uniqueSuffix}'
-var containerEnvName = 'cae-${environmentName}-${uniqueSuffix}'
-var logAnalyticsName = 'log-${environmentName}-${uniqueSuffix}'
+// Helper to sanitize environmentName for valid container app name
+var sanitizedEnvName = toLower(replace(replace(replace(replace(environmentName, ' ', '-'), '--', '-'), '[^a-zA-Z0-9-]', ''), '_', '-'))
+var containerAppName = take('ca-${sanitizedEnvName}-${uniqueSuffix}', 32)
+var containerEnvName = take('cae-${sanitizedEnvName}-${uniqueSuffix}', 32)
+var logAnalyticsName = take('log-${sanitizedEnvName}-${uniqueSuffix}', 63)
 
 resource logAnalytics 'Microsoft.OperationalInsights/workspaces@2022-10-01' = {
   name: logAnalyticsName
@@ -88,7 +91,7 @@ resource containerApp 'Microsoft.App/containerApps@2024-10-02-preview' = {
             }
             {
               name: 'AZURE_SPEECH_REGION'
-              value: 'westeurope'
+              value: speechRegion
             }
             {
               name: 'AZURE_COSMOSDB_ENDPOINT'
@@ -110,6 +113,10 @@ resource containerApp 'Microsoft.App/containerApps@2024-10-02-preview' = {
               name: 'WEBSOCKET_SERVER_CLIENT_SECRET'
               value: websocketServerClientSecret
             }
+            {
+              name: 'DEBUG_MODE'
+              value: 'true'
+            }
           ]
           resources: {
             cpu: json('2.0')
@@ -117,9 +124,20 @@ resource containerApp 'Microsoft.App/containerApps@2024-10-02-preview' = {
           }
         }
       ]
+      // TODO add memory/cpu scaling
       scale: {
         minReplicas: 1
         maxReplicas: 10
+        rules: [
+          {
+            name: 'http-scaler'
+            http: {
+              metadata: {
+                concurrentRequests: '100'
+              }
+            }
+          }
+        ]
       }
     }
   }

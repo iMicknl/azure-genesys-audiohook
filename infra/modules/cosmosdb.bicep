@@ -76,3 +76,4 @@ output cosmosDbAccountName string = cosmosDbAccount.name
 output cosmosDbAccountEndpoint string = cosmosDbAccount.properties.documentEndpoint
 output cosmosDbDatabaseName string = databaseName
 output cosmosDbContainerName string = containerName
+output cosmosDbDataContributorRoleDefinitionId string = '/subscriptions/${subscription().subscriptionId}/resourceGroups/${resourceGroup().name}/providers/Microsoft.DocumentDB/databaseAccounts/${cosmosDbAccount.name}/sqlRoleDefinitions/00000000-0000-0000-0000-000000000002'

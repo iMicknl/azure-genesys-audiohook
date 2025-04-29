@@ -9,6 +9,9 @@ param environmentName string
 @description('Container image to deploy')
 param containerImage string
 
+@secure()
+param websocketServerClientSecret string = base64(newGuid())
+
 var uniqueSuffix = substring(uniqueString(subscription().id, environmentName), 0, 5)
 var tags = {
   environment: environmentName
@@ -62,8 +65,10 @@ module containerapp 'modules/containerapp.bicep' = {
     cosmosDbEndpoint: cosmosdb.outputs.cosmosDbAccountEndpoint
     cosmosDbDatabase: cosmosdb.outputs.cosmosDbDatabaseName
     cosmosDbContainer: cosmosdb.outputs.cosmosDbContainerName
-    websocketServerApiKey: uniqueString(subscription().id, environmentName, 'wsapikey')
-    websocketServerClientSecret: uniqueString(subscription().id, environmentName, 'wsclientsecret')
+    // TODO store as secrets or in a KeyVault
+    websocketServerApiKey: '${uniqueString(subscription().id, environmentName, 'wsapikey')}${uniqueString(subscription().id, environmentName, 'wsapikey2')}'
+    websocketServerClientSecret: websocketServerClientSecret
+    speechRegion: location
   }
 }
 
@@ -76,6 +81,7 @@ module containerAppRoleAssignments 'modules/containerapp-roles.bicep' = {
     openAiId: cognitive.outputs.openAiId
     speechId: cognitive.outputs.speechId
     cosmosDbAccountName: cosmosdb.outputs.cosmosDbAccountName
+    cosmosDbDataContributorRoleDefinitionId: cosmosdb.outputs.cosmosDbDataContributorRoleDefinitionId
   }
 }
 
