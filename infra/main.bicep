@@ -68,6 +68,7 @@ module containerapp 'modules/containerapp.bicep' = {
     // TODO store as secrets or in a KeyVault
     websocketServerApiKey: '${uniqueString(subscription().id, environmentName, 'wsapikey')}${uniqueString(subscription().id, environmentName, 'wsapikey2')}'
     websocketServerClientSecret: websocketServerClientSecret
+    speechRegion: location
   }
 }
 
