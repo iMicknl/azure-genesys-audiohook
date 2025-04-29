@@ -512,7 +512,11 @@ class WebsocketServer:
         properties: dict[str, str] | None = {},
     ):
         """Send an JSON event to Azure Event Hub using the EventPublisher abstraction."""
-        if self.event_publisher:
+        if not self.event_publisher:
+            return
+
+        if session_id in self.active_ws_sessions:
+            # Get the conversation ID from the active WebSocket session
             ws_session = self.active_ws_sessions[session_id]
             await self.event_publisher.send_event(
                 event_type=f"azure-genesys-audiohook.{event}",
