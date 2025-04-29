@@ -1,4 +1,5 @@
 import asyncio
+import functools
 import json
 import logging
 import os
@@ -45,12 +46,33 @@ class WebsocketServer:
         self.app.before_serving(self.create_connections)
         self.app.after_serving(self.close_connections)
 
+    def require_api_key(self, func):
+        @functools.wraps(func)
+        async def wrapper(*args, **kwargs):
+            api_key = os.getenv("WEBSOCKET_SERVER_API_KEY")
+            header_key = request.headers.get("X-Api-Key")
+            param_key = request.args.get("key")
+            if api_key and (header_key == api_key or param_key == api_key):
+                return await func(*args, **kwargs)
+            return {
+                "error": {
+                    "code": "unauthorized",
+                    "message": "Invalid or missing API key.",
+                }
+            }, 401
+
+        return wrapper
+
     def setup_routes(self):
         """Setup the routes for the server"""
         self.app.route("/")(self.health_check)
 
-        self.app.route("/api/conversations")(self.get_conversations)
-        self.app.route("/api/conversation/<conversation_id>")(self.get_conversation)
+        self.app.route("/api/conversations")(
+            self.require_api_key(self.get_conversations)
+        )
+        self.app.route("/api/conversation/<conversation_id>")(
+            self.require_api_key(self.get_conversation)
+        )
 
         self.app.websocket("/audiohook/ws")(self.ws)
 
