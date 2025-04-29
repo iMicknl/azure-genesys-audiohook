@@ -479,6 +479,8 @@ class WebsocketServer:
         conversation = await self.conversations_store.get(conversation_id)
         media = conversation.media
 
+        self.logger.debug(f"[{session_id}] Received {len(data)} bytes of audio data.")
+
         if ws_session.audio_buffer is None:
             self.logger.info(
                 f"[{session_id}] type {media['type']}, format {media['format']}, rate {media['rate']}, channels {len(media['channels'])}"
