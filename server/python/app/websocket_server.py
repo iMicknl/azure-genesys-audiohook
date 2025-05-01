@@ -397,6 +397,10 @@ class WebsocketServer:
         media = parameters["media"]
         position = message["position"]
 
+        # Store conversation_id in the temp session storage
+        ws_session = self.active_ws_sessions[session_id]
+        ws_session.conversation_id = conversation_id
+
         # Handle connection probe
         # See https://developer.genesys.cloud/devapps/audiohook/patterns-and-practices#connection-probe
         if conversation_id == "00000000-0000-0000-0000-000000000000":
@@ -418,10 +422,6 @@ class WebsocketServer:
             ),
             media[0],
         )
-
-        # Store conversation_id in the temp session storage
-        ws_session = self.active_ws_sessions[session_id]
-        ws_session.conversation_id = conversation_id
 
         # Save/update persistent state
         conversation = Conversation(
@@ -476,6 +476,18 @@ class WebsocketServer:
         session_id = message["id"]
         ws_session = self.active_ws_sessions[session_id]
         conversation_id = ws_session.conversation_id
+
+        # Handle connection probe
+        # See https://developer.genesys.cloud/devapps/audiohook/patterns-and-practices#connection-probe
+        if conversation_id == "00000000-0000-0000-0000-000000000000":
+            await self.send_message(
+                type=ServerMessageType.CLOSED, client_message=message
+            )
+
+            if session_id in self.active_ws_sessions:
+                del self.active_ws_sessions[session_id]
+
+            return
 
         conversation = await self.conversations_store.get(conversation_id)
 
