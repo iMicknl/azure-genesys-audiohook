@@ -44,8 +44,7 @@ Deploy this accelerator using the provided [infrastructure-as-code (Bicep)](./in
     | Azure Location      | The Azure region for resources (e.g., swedencentral).                       |
     | Environment Name    | A unique environment name (used as a prefix for resource names).             |
 
-    > [!NOTE]
-    > For best compatibility, use `swedencentral` as your Azure region. Other regions may not be fully supported or tested.
+    For best compatibility, use `swedencentral` as your Azure region. Other regions may not be fully supported or tested.
 
 4. After deployment, the CLI will display a link to your web service. Open it in your browser, you should see `{"status": "healthy"}` to confirm the service is running.
 
@@ -59,7 +58,7 @@ Once your web service is running, configure the AudioHook Monitor in Genesys Clo
 
 3. Select the **Credentials** tab. Here, you must provide the API Key and Client Secret. In the Azure Portal, go to your deployed resource group and open the Key Vault. Under **Objects > Secrets**, locate the API Key and Client Secret.
 
-These secrets are generated automatically during deployment, but for security, it is recommended to update them with your own values. Ensure the Client Secret is a BASE64-encoded string.
+    These secrets are generated automatically during deployment, but for security, it is recommended to update them with your own values. Ensure the Client Secret is a BASE64-encoded string.
 
 > [!NOTE]
 > If you cannot view the secrets, go to **Access control (IAM)** in the Key Vault and assign yourself the **Key Vault Secrets Officer** role.
