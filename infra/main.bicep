@@ -33,7 +33,7 @@ module keyvault 'modules/keyvault.bicep' = {
     uniqueSuffix: uniqueSuffix
     tags: tags
     websocketServerApiKey: '${uniqueString(subscription().id, environmentName, 'wsapikey')}${uniqueString(subscription().id, environmentName, 'wsapikey2')}'
-    websocketServerClientSecret: uniqueString(subscription().id, environmentName, 'wsclientsecret')
+    websocketServerClientSecret: base64(uniqueString(subscription().id, environmentName, 'wsclientsecret'))
   }
 }
 
