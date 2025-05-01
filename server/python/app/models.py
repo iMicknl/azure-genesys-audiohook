@@ -54,6 +54,8 @@ class WebSocketSessionStorage(BaseModel):
 
 
 class Error(BaseModel):
+    """Pydantic model to model Error response"""
+
     code: str
     message: str
 

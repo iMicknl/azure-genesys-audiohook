@@ -116,6 +116,8 @@ class WebsocketServer:
         https://learn.microsoft.com/en-us/azure/container-apps/health-probes
         """
 
+        # TODO abstract this to a health check class
+
         # Check conversations store (CosmosDB or in-memory)
         try:
             # InMemoryConversationStore is always healthy
@@ -175,23 +177,9 @@ class WebsocketServer:
                     ),
                 ).model_dump(), 503
 
-        # Optionally: Check Azure Speech Service config (not required for health, but useful)
-        # try:
-        #     if os.getenv("AZURE_SPEECH_KEY") or os.getenv("AZURE_SPEECH_RESOURCE_ID"):
-        #         region = os.environ.get("AZURE_SPEECH_REGION")
-        #         if not region:
-        #             raise Exception("AZURE_SPEECH_REGION not set")
-        #         if os.getenv("AZURE_SPEECH_KEY"):
-        #             speechsdk.SpeechConfig(subscription=os.getenv("AZURE_SPEECH_KEY"), region=region)
-        #         else:
-        #             from .utils.identity import get_speech_token
-        #             token = get_speech_token(os.environ["AZURE_SPEECH_RESOURCE_ID"])
-        #             speechsdk.SpeechConfig(auth_token=token, region=region)
-        # except Exception as e:
-        #     self.logger.error(f"Health check failed: Speech Service unhealthy: {e}")
-        #     return {"status": "unhealthy", "error": "speech_service", "detail": str(e)}, 503
+        # TODO check Azure Speech Service (if configured)
 
-        return HealthCheckResponse(status="healthy").model_dump(), 200
+        return HealthCheckResponse(status="healthy").model_dump(exclude_none=True), 200
 
     async def get_conversations(self) -> Any:
         """
@@ -207,7 +195,7 @@ class WebsocketServer:
         return ConversationsResponse(
             count=len(conversations),
             conversations=conversations,
-        ).model_dump(), 200
+        ).model_dump(exclude_none=True), 200
 
     async def get_conversation(self, conversation_id) -> Any:
         """
@@ -215,7 +203,7 @@ class WebsocketServer:
         """
         conversation = await self.conversations_store.get(conversation_id)
         if conversation:
-            return conversation.model_dump(), 200
+            return conversation.model_dump(exclude_none=True), 200
         return {
             "error": {
                 "code": "unknown_conversation",
