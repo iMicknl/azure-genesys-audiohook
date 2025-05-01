@@ -63,3 +63,13 @@ These secrets are generated automatically during deployment, but for security, i
 > **Note:** If you cannot view the secrets, go to **Access control (IAM)** in the Key Vault and assign yourself the **Key Vault Secrets Officer** role.
 
 4. Activate your AudioHook.
+
+## Clean up resources
+
+When you no longer need the resources created in this article, run the following command to power down the app:
+
+```bash
+azd down
+```
+
+If you want to redeploy to a different region, delete the `.azure` directory before running `azd up` again. In a more advanced scenario, you could selectively edit files within the `.azure` directory to change the region.
