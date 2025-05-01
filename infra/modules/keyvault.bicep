@@ -4,9 +4,10 @@ param uniqueSuffix string
 param tags object
 
 var keyVaultName = toLower(replace('kv-${environmentName}-${uniqueSuffix}', '_', '-'))
+var sanitizedKeyVaultName = take(toLower(replace(replace(replace(replace(keyVaultName, '--', '-'), '_', '-'), '[^a-zA-Z0-9-]', ''), '-$', '')), 24)
 
 resource keyVault 'Microsoft.KeyVault/vaults@2023-02-01' = {
-  name: keyVaultName
+  name: sanitizedKeyVaultName
   location: location
   tags: tags
   properties: {
@@ -49,5 +50,9 @@ resource clientSecret 'Microsoft.KeyVault/vaults/secrets@2023-02-01' = {
 }
 
 
-output clientSecretUri string = '${keyVault.id}/secrets/websocket-server-client-secret'
-output apiKeySecretUri string = '${keyVault.id}/secrets/websocket-server-api-key'
+var keyVaultDnsSuffix = environment().suffixes.keyvaultDns
+
+output apiKeySecretUri string = 'https://${keyVault.name}${keyVaultDnsSuffix}/secrets/${apiKeySecret.name}'
+output clientSecretUri string = 'https://${keyVault.name}${keyVaultDnsSuffix}/secrets/${clientSecret.name}'
+output keyVaultId string = keyVault.id
+output keyVaultName string = keyVault.name

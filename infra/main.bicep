@@ -81,8 +81,8 @@ module containerapp 'modules/containerapp.bicep' = {
     cosmosDbEndpoint: cosmosdb.outputs.cosmosDbAccountEndpoint
     cosmosDbDatabase: cosmosdb.outputs.cosmosDbDatabaseName
     cosmosDbContainer: cosmosdb.outputs.cosmosDbContainerName
-    websocketServerApiKey: keyvault.outputs.apiKeySecretUri
-    websocketServerClientSecret: keyvault.outputs.clientSecretUri
+    apiKeySecretUri: keyvault.outputs.apiKeySecretUri
+    clientSecretUri: keyvault.outputs.clientSecretUri
     speechRegion: location
   }
 }
@@ -97,6 +97,7 @@ module containerAppRoleAssignments 'modules/containerapp-roles.bicep' = {
     speechId: cognitive.outputs.speechId
     cosmosDbAccountName: cosmosdb.outputs.cosmosDbAccountName
     cosmosDbDataContributorRoleDefinitionId: cosmosdb.outputs.cosmosDbDataContributorRoleDefinitionId
+    keyVaultName: keyvault.outputs.keyVaultName
   }
 }
 

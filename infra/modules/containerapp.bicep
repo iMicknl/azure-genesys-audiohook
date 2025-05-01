@@ -10,11 +10,8 @@ param cosmosDbEndpoint string
 param cosmosDbDatabase string
 param cosmosDbContainer string
 param speechRegion string
-
-@secure()
-param websocketServerApiKey string
-@secure()
-param websocketServerClientSecret string
+param apiKeySecretUri string
+param clientSecretUri string
 
 // Helper to sanitize environmentName for valid container app name
 var sanitizedEnvName = toLower(replace(replace(replace(replace(environmentName, ' ', '-'), '--', '-'), '[^a-zA-Z0-9-]', ''), '_', '-'))
@@ -70,11 +67,13 @@ resource containerApp 'Microsoft.App/containerApps@2024-10-02-preview' = {
       secrets: [
         {
           name: 'websocket-server-api-key'
-          value: websocketServerApiKey
+          keyVaultUrl: apiKeySecretUri
+          identity: 'system'
         }
         {
           name: 'websocket-server-client-secret'
-          value: websocketServerClientSecret
+          keyVaultUrl: clientSecretUri
+          identity: 'system'
         }
       ]
     }
