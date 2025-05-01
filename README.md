@@ -46,9 +46,9 @@ Deploy this accelerator using the provided [infrastructure-as-code (Bicep)](./in
 
     > **Note:** For best compatibility, use `swedencentral` as your Azure region. Other regions may not be fully supported or tested.
 
-4. After deployment, the CLI will display a link to your web service. Open it in your browser—you should see `{"status": "healthy"}` to confirm the service is running.
+4. After deployment, the CLI will display a link to your web service. Open it in your browser, you should see `{"status": "healthy"}` to confirm the service is running.
 
-## Genesys configuration
+## Configure Genesys Cloud AudioHook
 
 Once your web service is running, configure the AudioHook Monitor in Genesys Cloud to stream audio to your Azure deployment.
 
@@ -56,8 +56,10 @@ Once your web service is running, configure the AudioHook Monitor in Genesys Clo
 
 2. Use the Connection URI output after deployment, or take the web service URL from step 4, replace `https` with `wss`, and append `/audiohook/ws` as the path.
 
-3. Click the credentials tab, here you will need to provide the API Key and Client Secret. Navigate to the Azure Portal and your new resource group, and navigate to the Key Vault. Navigate to Objects -> Secrets. Here you will find the API Key and Client Secret.
+3. Select the **Credentials** tab. Here, you must provide the API Key and Client Secret. In the Azure Portal, go to your deployed resource group and open the Key Vault. Under **Objects > Secrets**, locate the API Key and Client Secret.
 
-These values are auto generated during deployment, but it is a best practice to change them to your own values. Make sure the Client Secret is a BASE64 encoded string.
+These secrets are generated automatically during deployment, but for security, it is recommended to update them with your own values. Ensure the Client Secret is a BASE64-encoded string.
 
-> note: If you don't have access to the keys, navigate to Access control (IAM) and assign your account the Key Vault Secrets Officer role.
+> **Note:** If you cannot view the secrets, go to **Access control (IAM)** in the Key Vault and assign yourself the **Key Vault Secrets Officer** role.
+
+4. Activate your AudioHook.

@@ -104,3 +104,4 @@ module containerAppRoleAssignments 'modules/containerapp-roles.bicep' = {
 }
 
 output containerAppFqdn string = containerapp.outputs.containerAppFqdn
+output audioHookConnectionUri string = 'wss://${containerapp.outputs.containerAppFqdn}/audiohook/ws'
