@@ -53,10 +53,16 @@ class WebSocketSessionStorage(BaseModel):
     server_seq: int = 0
 
 
+class Error(BaseModel):
+    code: str
+    message: str
+
+
 class HealthCheckResponse(BaseModel):
     """Pydantic model to model Health Check response"""
 
     status: str
+    error: Error | None = None
 
 
 class ConversationsResponse(BaseModel):

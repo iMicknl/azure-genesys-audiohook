@@ -20,11 +20,15 @@ from .events.event_publisher import EventPublisher
 from .models import (
     Conversation,
     ConversationsResponse,
+    Error,
     HealthCheckResponse,
     WebSocketSessionStorage,
 )
 from .storage.base_conversation_store import ConversationStore
 from .storage.conversation_store import get_conversation_store
+from .storage.in_memory_conversation_store import (
+    InMemoryConversationStore,
+)
 from .utils.audio import convert_to_wav
 from .utils.identity import get_azure_credential_async, get_speech_token
 from .utils.storage import upload_blob_file
@@ -112,10 +116,82 @@ class WebsocketServer:
         https://learn.microsoft.com/en-us/azure/container-apps/health-probes
         """
 
-        # TODO: Implement health check logic
-        # For example, check if the database and STT connection is healthy
-        # or if the external services are reachable.
-        return HealthCheckResponse(status="online").model_dump(), 200
+        # Check conversations store (CosmosDB or in-memory)
+        try:
+            # InMemoryConversationStore is always healthy
+            if isinstance(self.conversations_store, type(InMemoryConversationStore)):
+                pass
+            else:
+                # Try a simple list operation (should raise if CosmosDB is unreachable or misconfigured)
+                await asyncio.wait_for(
+                    self.conversations_store.list(active=None), timeout=5
+                )
+        except Exception as e:
+            self.logger.error(
+                f"Health check failed: Conversations store unhealthy: {e}"
+            )
+
+            return HealthCheckResponse(
+                status="unhealthy",
+                error=Error(
+                    code="conversations_store",
+                    message=f"Conversations store is unhealthy. {str(e)}.",
+                ),
+            ).model_dump(), 503
+
+        # Check Azure Blob Storage (if configured)
+        if self.blob_service_client:
+            try:
+                # get_service_properties is a lightweight call
+                await asyncio.wait_for(
+                    self.blob_service_client.get_service_properties(), timeout=5
+                )
+            except Exception as e:
+                self.logger.error(f"Health check failed: Blob Storage unhealthy: {e}")
+
+                return HealthCheckResponse(
+                    status="unhealthy",
+                    error=Error(
+                        code="blob_storage",
+                        message=f"Blob storage is unhealthy. {str(e)}.",
+                    ),
+                ).model_dump(), 503
+
+        # Check Azure Event Hub (if configured)
+        if self.event_publisher:
+            try:
+                # Try to create a batch (does not send, but checks connection/permissions)
+                await asyncio.wait_for(
+                    self.event_publisher.producer_client.create_batch(), timeout=5
+                )
+            except Exception as e:
+                self.logger.error(f"Health check failed: Event Hub unhealthy: {e}")
+
+                return HealthCheckResponse(
+                    status="unhealthy",
+                    error=Error(
+                        code="event_hub",
+                        message=f"Event Hub is unhealthy. {str(e)}.",
+                    ),
+                ).model_dump(), 503
+
+        # Optionally: Check Azure Speech Service config (not required for health, but useful)
+        # try:
+        #     if os.getenv("AZURE_SPEECH_KEY") or os.getenv("AZURE_SPEECH_RESOURCE_ID"):
+        #         region = os.environ.get("AZURE_SPEECH_REGION")
+        #         if not region:
+        #             raise Exception("AZURE_SPEECH_REGION not set")
+        #         if os.getenv("AZURE_SPEECH_KEY"):
+        #             speechsdk.SpeechConfig(subscription=os.getenv("AZURE_SPEECH_KEY"), region=region)
+        #         else:
+        #             from .utils.identity import get_speech_token
+        #             token = get_speech_token(os.environ["AZURE_SPEECH_RESOURCE_ID"])
+        #             speechsdk.SpeechConfig(auth_token=token, region=region)
+        # except Exception as e:
+        #     self.logger.error(f"Health check failed: Speech Service unhealthy: {e}")
+        #     return {"status": "unhealthy", "error": "speech_service", "detail": str(e)}, 503
+
+        return HealthCheckResponse(status="healthy").model_dump(), 200
 
     async def get_conversations(self) -> Any:
         """
