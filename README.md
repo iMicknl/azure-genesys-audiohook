@@ -18,7 +18,7 @@ The AudioHook processing is separated from AI services, allowing flexible deploy
 
 ![Real-time architecture](./docs/images/real-time-architecture.png)
 
-## Deployment
+## Deploying to Azure
 
 Deploy this accelerator using the provided [infrastructure-as-code (Bicep)](./infra) templates. The recommended method is the [Azure Developer CLI (azd)](https://learn.microsoft.com/en-us/azure/developer/azure-developer-cli/), which simplifies authentication, resource provisioning, and configuration.
 
