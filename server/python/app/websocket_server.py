@@ -121,7 +121,7 @@ class WebsocketServer:
         # Check conversations store (CosmosDB or in-memory)
         try:
             # InMemoryConversationStore is always healthy
-            if isinstance(self.conversations_store, type(InMemoryConversationStore)):
+            if isinstance(self.conversations_store, InMemoryConversationStore):
                 pass
             else:
                 # Try a simple list operation (should raise if CosmosDB is unreachable or misconfigured)
