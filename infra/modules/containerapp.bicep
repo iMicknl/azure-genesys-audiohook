@@ -12,9 +12,7 @@ param cosmosDbContainer string
 param speechRegion string
 param apiKeySecretUri string
 param clientSecretUri string
-
-@description('Comma-separated list of Azure Speech languages, e.g. "en-US,nl-NL"')
-param azureSpeechLanguages string = 'en-US'
+param azureSpeechLanguages string
 
 // Helper to sanitize environmentName for valid container app name
 var sanitizedEnvName = toLower(replace(replace(replace(replace(environmentName, ' ', '-'), '--', '-'), '[^a-zA-Z0-9-]', ''), '_', '-'))

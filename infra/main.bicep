@@ -9,7 +9,8 @@ param environmentName string
 @description('Container image to deploy')
 param containerImage string
 
-
+@description('Comma-separated list of Azure Speech languages, e.g. "en-US,nl-NL"')
+param azureSpeechLanguages string = 'en-US'
 
 var uniqueSuffix = substring(uniqueString(subscription().id, environmentName), 0, 5)
 var tags = {
@@ -84,7 +85,7 @@ module containerapp 'modules/containerapp.bicep' = {
     apiKeySecretUri: keyvault.outputs.apiKeySecretUri
     clientSecretUri: keyvault.outputs.clientSecretUri
     speechRegion: location
-    azureSpeechLanguages: 'en-US'
+    azureSpeechLanguages: azureSpeechLanguages
   }
 }
 
