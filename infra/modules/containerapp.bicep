@@ -9,11 +9,10 @@ param modelDeploymentName string
 param cosmosDbEndpoint string
 param cosmosDbDatabase string
 param cosmosDbContainer string
-@secure()
-param websocketServerApiKey string
-@secure()
-param websocketServerClientSecret string
 param speechRegion string
+param apiKeySecretUri string
+param clientSecretUri string
+param azureSpeechLanguages string
 
 // Helper to sanitize environmentName for valid container app name
 var sanitizedEnvName = toLower(replace(replace(replace(replace(environmentName, ' ', '-'), '--', '-'), '[^a-zA-Z0-9-]', ''), '_', '-'))
@@ -66,6 +65,18 @@ resource containerApp 'Microsoft.App/containerApps@2024-10-02-preview' = {
         external: true
         targetPort: 8000
       }
+      secrets: [
+        {
+          name: 'websocket-server-api-key'
+          keyVaultUrl: apiKeySecretUri
+          identity: 'system'
+        }
+        {
+          name: 'websocket-server-client-secret'
+          keyVaultUrl: clientSecretUri
+          identity: 'system'
+        }
+      ]
     }
     template: {
       containers: [
@@ -75,7 +86,7 @@ resource containerApp 'Microsoft.App/containerApps@2024-10-02-preview' = {
           env: [
             {
               name: 'AZURE_SPEECH_LANGUAGES'
-              value: 'en-US'
+              value: azureSpeechLanguages
             }
             {
               name: 'AZURE_OPENAI_ENDPOINT'
@@ -107,11 +118,11 @@ resource containerApp 'Microsoft.App/containerApps@2024-10-02-preview' = {
             }
             {
               name: 'WEBSOCKET_SERVER_API_KEY'
-              value: websocketServerApiKey
+              secretRef: 'websocket-server-api-key'
             }
             {
               name: 'WEBSOCKET_SERVER_CLIENT_SECRET'
-              value: websocketServerClientSecret
+              secretRef: 'websocket-server-client-secret'
             }
             {
               name: 'DEBUG_MODE'

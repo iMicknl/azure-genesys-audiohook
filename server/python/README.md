@@ -96,13 +96,11 @@ gunicorn server:app
 
 ### Deploy to Azure
 
-This repository doesn't provide an infrastructure as code (IaC) solution for deploying the server to Azure yet. However, you can leverage the Azure CLI to deploy the server to Azure Container Apps. Run the command below to deploy the server to Azure Container Apps.
-
-You will need to seperately deploy additional services (e.g. Azure AI Speech, Azure CosmosDB) and add them to your environment variables during deployment.
+For detailed deployment instructions, refer to the [main README](../../README.md#deployment), which covers deploying this accelerator, including the websocket server, to Azure. Once your environment is set up, you can use the following command to build a container image from your local source and deploy it to Azure Container Apps, automatically creating an Azure Container Registry if one does not exist:
 
 ```bash
 az containerapp up --resource-group your-resource-group \
---name your-application-name - --location westeurope \
+--name your-application-name - --location swedencentral \
 --ingress external --target-port 8000 --source . \
 --env-vars WEBSOCKET_SERVER_API_KEY="your_api_key" WEBSOCKET_SERVER_CLIENT_SECRET="your_secret=" DEBUG_MODE="true"
 ```

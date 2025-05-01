@@ -3,6 +3,7 @@ param openAiId string
 param speechId string
 param cosmosDbAccountName string
 param cosmosDbDataContributorRoleDefinitionId string
+param keyVaultName string
 
 resource openAiResource 'Microsoft.CognitiveServices/accounts@2023-05-01' existing = {
   name: last(split(openAiId, '/'))
@@ -15,8 +16,6 @@ resource speechResource 'Microsoft.CognitiveServices/accounts@2023-05-01' existi
 resource cosmosDbAccount 'Microsoft.DocumentDB/databaseAccounts@2023-04-15' existing = {
   name: cosmosDbAccountName
 }
-
-
 
 // Add Cosmos DB data plane role assignment
 
@@ -47,6 +46,20 @@ resource speechRoleAssignment 'Microsoft.Authorization/roleAssignments@2022-04-0
   scope: speechResource
   properties: {
     roleDefinitionId: subscriptionResourceId('Microsoft.Authorization/roleDefinitions', 'f2dc8367-1007-4938-bd23-fe263f013447')
+    principalId: containerAppPrincipalId
+    principalType: 'ServicePrincipal'
+  }
+}
+
+resource keyVault 'Microsoft.KeyVault/vaults@2023-02-01' existing = {
+  name: keyVaultName
+}
+
+resource keyVaultRoleAssignment 'Microsoft.Authorization/roleAssignments@2022-04-01' = {
+  name: guid(keyVault.id, containerAppPrincipalId, 'Key Vault Secrets User')
+  scope: keyVault
+  properties: {
+    roleDefinitionId: subscriptionResourceId('Microsoft.Authorization/roleDefinitions', 'b86a8fe4-44ce-4948-aee5-eccb2c155cd7')
     principalId: containerAppPrincipalId
     principalType: 'ServicePrincipal'
   }

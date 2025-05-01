@@ -20,11 +20,15 @@ from .events.event_publisher import EventPublisher
 from .models import (
     Conversation,
     ConversationsResponse,
+    Error,
     HealthCheckResponse,
     WebSocketSessionStorage,
 )
 from .storage.base_conversation_store import ConversationStore
 from .storage.conversation_store import get_conversation_store
+from .storage.in_memory_conversation_store import (
+    InMemoryConversationStore,
+)
 from .utils.audio import convert_to_wav
 from .utils.identity import get_azure_credential_async, get_speech_token
 from .utils.storage import upload_blob_file
@@ -112,10 +116,70 @@ class WebsocketServer:
         https://learn.microsoft.com/en-us/azure/container-apps/health-probes
         """
 
-        # TODO: Implement health check logic
-        # For example, check if the database and STT connection is healthy
-        # or if the external services are reachable.
-        return HealthCheckResponse(status="online").model_dump(), 200
+        # TODO abstract this to a health check class
+
+        # Check conversations store (CosmosDB or in-memory)
+        try:
+            # InMemoryConversationStore is always healthy
+            if isinstance(self.conversations_store, InMemoryConversationStore):
+                pass
+            else:
+                # Try a simple list operation (should raise if CosmosDB is unreachable or misconfigured)
+                await asyncio.wait_for(
+                    self.conversations_store.list(active=None), timeout=5
+                )
+        except Exception as e:
+            self.logger.error(
+                f"Health check failed: Conversations store unhealthy: {e}"
+            )
+
+            return HealthCheckResponse(
+                status="unhealthy",
+                error=Error(
+                    code="conversations_store",
+                    message=f"Conversations store is unhealthy. {str(e)}.",
+                ),
+            ).model_dump(), 503
+
+        # Check Azure Blob Storage (if configured)
+        if self.blob_service_client:
+            try:
+                # get_service_properties is a lightweight call
+                await asyncio.wait_for(
+                    self.blob_service_client.get_service_properties(), timeout=5
+                )
+            except Exception as e:
+                self.logger.error(f"Health check failed: Blob Storage unhealthy: {e}")
+
+                return HealthCheckResponse(
+                    status="unhealthy",
+                    error=Error(
+                        code="blob_storage",
+                        message=f"Blob storage is unhealthy. {str(e)}.",
+                    ),
+                ).model_dump(), 503
+
+        # Check Azure Event Hub (if configured)
+        if self.event_publisher:
+            try:
+                # Try to create a batch (does not send, but checks connection/permissions)
+                await asyncio.wait_for(
+                    self.event_publisher.producer_client.create_batch(), timeout=5
+                )
+            except Exception as e:
+                self.logger.error(f"Health check failed: Event Hub unhealthy: {e}")
+
+                return HealthCheckResponse(
+                    status="unhealthy",
+                    error=Error(
+                        code="event_hub",
+                        message=f"Event Hub is unhealthy. {str(e)}.",
+                    ),
+                ).model_dump(), 503
+
+        # TODO check Azure Speech Service (if configured)
+
+        return HealthCheckResponse(status="healthy").model_dump(exclude_none=True), 200
 
     async def get_conversations(self) -> Any:
         """
@@ -131,7 +195,7 @@ class WebsocketServer:
         return ConversationsResponse(
             count=len(conversations),
             conversations=conversations,
-        ).model_dump(), 200
+        ).model_dump(exclude_none=True), 200
 
     async def get_conversation(self, conversation_id) -> Any:
         """
@@ -139,7 +203,7 @@ class WebsocketServer:
         """
         conversation = await self.conversations_store.get(conversation_id)
         if conversation:
-            return conversation.model_dump(), 200
+            return conversation.model_dump(exclude_none=True), 200
         return {
             "error": {
                 "code": "unknown_conversation",
@@ -151,23 +215,25 @@ class WebsocketServer:
         """Websocket endpoint"""
         headers = websocket.headers
         remote = websocket.remote_addr
+        session_id = headers["Audiohook-Session-Id"]
+
+        if not session_id:
+            return await self.disconnect(
+                reason=DisconnectReason.ERROR,
+                message="No session ID provided",
+                code=1008,
+                session_id=None,
+            )
 
         if headers["X-Api-Key"] != os.getenv("WEBSOCKET_SERVER_API_KEY"):
             return await self.disconnect(
                 reason=DisconnectReason.UNAUTHORIZED,
                 message="Invalid API Key",
                 code=3000,
+                session_id=session_id,
             )
 
         await websocket.accept()
-
-        session_id = headers["Audiohook-Session-Id"]
-        if not session_id:
-            return await self.disconnect(
-                reason=DisconnectReason.ERROR,
-                message="No session ID provided",
-                code=1008,
-            )
 
         # Save new client in persistent storage
         self.active_ws_sessions[session_id] = WebSocketSessionStorage()
@@ -186,6 +252,7 @@ class WebsocketServer:
                 reason=DisconnectReason.UNAUTHORIZED,
                 message="Invalid signature",
                 code=3000,
+                session_id=session_id,
             )
 
         # Open the websocket connection and start receiving data (messages / audio)
@@ -215,12 +282,23 @@ class WebsocketServer:
                 )
                 del self.active_ws_sessions[session_id]
 
-    async def disconnect(self, reason: DisconnectReason, message: str, code: int):
-        """Disconnect the websocket connection gracefully."""
+    async def disconnect(
+        self, reason: DisconnectReason, message: str, code: int, session_id: str | None
+    ):
+        """
+        Disconnect the websocket connection gracefully.
+
+        Using sequence number 1 for the disconnect message as per the protocol specification,
+        since the client did not send an open message.
+        """
         self.logger.warning(message)
         await websocket.send_json(
             {
+                "version": "2",
                 "type": ServerMessageType.DISCONNECT,
+                "seq": 1,
+                "clientseq": 1,
+                "id": session_id,
                 "parameters": {
                     "reason": reason,
                     "info": message,
@@ -264,6 +342,7 @@ class WebsocketServer:
                 reason=DisconnectReason.ERROR,
                 message=f"Sequence number mismatch: received {message['seq']}, expected {ws_session.client_seq + 1}",
                 code=3000,
+                session_id=session_id,
             )
 
         # Store new sequence number
@@ -318,6 +397,10 @@ class WebsocketServer:
         media = parameters["media"]
         position = message["position"]
 
+        # Store conversation_id in the temp session storage
+        ws_session = self.active_ws_sessions[session_id]
+        ws_session.conversation_id = conversation_id
+
         # Handle connection probe
         # See https://developer.genesys.cloud/devapps/audiohook/patterns-and-practices#connection-probe
         if conversation_id == "00000000-0000-0000-0000-000000000000":
@@ -339,10 +422,6 @@ class WebsocketServer:
             ),
             media[0],
         )
-
-        # Store conversation_id in the temp session storage
-        ws_session = self.active_ws_sessions[session_id]
-        ws_session.conversation_id = conversation_id
 
         # Save/update persistent state
         conversation = Conversation(
@@ -397,6 +476,18 @@ class WebsocketServer:
         session_id = message["id"]
         ws_session = self.active_ws_sessions[session_id]
         conversation_id = ws_session.conversation_id
+
+        # Handle connection probe
+        # See https://developer.genesys.cloud/devapps/audiohook/patterns-and-practices#connection-probe
+        if conversation_id == "00000000-0000-0000-0000-000000000000":
+            await self.send_message(
+                type=ServerMessageType.CLOSED, client_message=message
+            )
+
+            if session_id in self.active_ws_sessions:
+                del self.active_ws_sessions[session_id]
+
+            return
 
         conversation = await self.conversations_store.get(conversation_id)
 

@@ -26,7 +26,7 @@ async def test_health_check(app):
     response = await app.get("/")
 
     assert response.status_code == 200
-    assert await response.data == b'{"status":"online"}\n'
+    assert await response.data == b'{"status":"healthy"}\n'
 
 
 @pytest.mark.asyncio
@@ -38,7 +38,7 @@ async def test_health_check_valid_json(app):
     data = await response.get_json()
 
     assert data is not None
-    assert data["status"] == "online"
+    assert data["status"] == "healthy"
 
 
 @pytest.mark.asyncio
