@@ -527,7 +527,7 @@ class WebsocketServer:
                 # TODO retrieve raw bytes from PushAudioInputStream to avoid saving two buffers
                 wav_file = convert_to_wav(
                     format=conversation.media["format"],
-                    audio_data=ws_session.raw_audio_buffer,
+                    audio_data=ws_session.speech_session.raw_audio_buffer,
                     channels=len(conversation.media["channels"]),
                     sample_width=2,
                     frame_rate=conversation.media["rate"],
