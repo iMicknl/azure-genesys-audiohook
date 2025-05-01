@@ -84,6 +84,7 @@ module containerapp 'modules/containerapp.bicep' = {
     apiKeySecretUri: keyvault.outputs.apiKeySecretUri
     clientSecretUri: keyvault.outputs.clientSecretUri
     speechRegion: location
+    azureSpeechLanguages: 'en-US'
   }
 }
 
