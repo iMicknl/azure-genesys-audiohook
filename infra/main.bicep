@@ -9,8 +9,7 @@ param environmentName string
 @description('Container image to deploy')
 param containerImage string
 
-@secure()
-param websocketServerClientSecret string = base64(newGuid())
+
 
 var uniqueSuffix = substring(uniqueString(subscription().id, environmentName), 0, 5)
 var tags = {
@@ -18,7 +17,24 @@ var tags = {
   application: 'azure-genesys-audiohook'
 }
 var rgName = 'rg-${environmentName}-${uniqueSuffix}'
+
+
 var modelName = 'gpt-4.1-mini'
+
+
+// Deploy Key Vault and secrets
+module keyvault 'modules/keyvault.bicep' = {
+  scope: rg
+  name: 'keyvault-deployment'
+  params: {
+    location: location
+    environmentName: environmentName
+    uniqueSuffix: uniqueSuffix
+    tags: tags
+    websocketServerApiKey: '${uniqueString(subscription().id, environmentName, 'wsapikey')}${uniqueString(subscription().id, environmentName, 'wsapikey2')}'
+    websocketServerClientSecret: uniqueString(subscription().id, environmentName, 'wsclientsecret')
+  }
+}
 
 resource rg 'Microsoft.Resources/resourceGroups@2023-07-01' = {
   name: rgName
@@ -49,7 +65,7 @@ module cosmosdb 'modules/cosmosdb.bicep' = {
   }
 }
 
-// Deploy container app after cognitive services and storage
+// Deploy container app after cognitive services, storage, and key vault
 module containerapp 'modules/containerapp.bicep' = {
   scope: rg
   name: 'containerapp-deployment'
@@ -65,9 +81,8 @@ module containerapp 'modules/containerapp.bicep' = {
     cosmosDbEndpoint: cosmosdb.outputs.cosmosDbAccountEndpoint
     cosmosDbDatabase: cosmosdb.outputs.cosmosDbDatabaseName
     cosmosDbContainer: cosmosdb.outputs.cosmosDbContainerName
-    // TODO store as secrets or in a KeyVault
-    websocketServerApiKey: '${uniqueString(subscription().id, environmentName, 'wsapikey')}${uniqueString(subscription().id, environmentName, 'wsapikey2')}'
-    websocketServerClientSecret: websocketServerClientSecret
+    websocketServerApiKey: keyvault.outputs.apiKeySecretUri
+    websocketServerClientSecret: keyvault.outputs.clientSecretUri
     speechRegion: location
   }
 }
