@@ -215,23 +215,25 @@ class WebsocketServer:
         """Websocket endpoint"""
         headers = websocket.headers
         remote = websocket.remote_addr
+        session_id = headers["Audiohook-Session-Id"]
+
+        if not session_id:
+            return await self.disconnect(
+                reason=DisconnectReason.ERROR,
+                message="No session ID provided",
+                code=1008,
+                session_id=None,
+            )
 
         if headers["X-Api-Key"] != os.getenv("WEBSOCKET_SERVER_API_KEY"):
             return await self.disconnect(
                 reason=DisconnectReason.UNAUTHORIZED,
                 message="Invalid API Key",
                 code=3000,
+                session_id=session_id,
             )
 
         await websocket.accept()
-
-        session_id = headers["Audiohook-Session-Id"]
-        if not session_id:
-            return await self.disconnect(
-                reason=DisconnectReason.ERROR,
-                message="No session ID provided",
-                code=1008,
-            )
 
         # Save new client in persistent storage
         self.active_ws_sessions[session_id] = WebSocketSessionStorage()
@@ -250,6 +252,7 @@ class WebsocketServer:
                 reason=DisconnectReason.UNAUTHORIZED,
                 message="Invalid signature",
                 code=3000,
+                session_id=session_id,
             )
 
         # Open the websocket connection and start receiving data (messages / audio)
@@ -279,12 +282,23 @@ class WebsocketServer:
                 )
                 del self.active_ws_sessions[session_id]
 
-    async def disconnect(self, reason: DisconnectReason, message: str, code: int):
-        """Disconnect the websocket connection gracefully."""
+    async def disconnect(
+        self, reason: DisconnectReason, message: str, code: int, session_id: str | None
+    ):
+        """
+        Disconnect the websocket connection gracefully.
+
+        Using sequence number 1 for the disconnect message as per the protocol specification,
+        since the client did not send an open message.
+        """
         self.logger.warning(message)
         await websocket.send_json(
             {
+                "version": "2",
                 "type": ServerMessageType.DISCONNECT,
+                "seq": 1,
+                "clientseq": 1,
+                "id": session_id,
                 "parameters": {
                     "reason": reason,
                     "info": message,
@@ -328,6 +342,7 @@ class WebsocketServer:
                 reason=DisconnectReason.ERROR,
                 message=f"Sequence number mismatch: received {message['seq']}, expected {ws_session.client_seq + 1}",
                 code=3000,
+                session_id=session_id,
             )
 
         # Store new sequence number
