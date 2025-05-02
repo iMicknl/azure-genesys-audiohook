@@ -8,6 +8,7 @@ import azure.cognitiveservices.speech as speechsdk
 
 from ..enums import AzureGenesysEvent
 from ..models import WebSocketSessionStorage
+from ..storage.base_conversation_store import ConversationStore
 from ..utils.identity import get_speech_token
 from .speech_provider import SpeechProvider
 
@@ -17,7 +18,7 @@ class AzureAISpeechProvider(SpeechProvider):
 
     def __init__(
         self,
-        conversations_store: Any,
+        conversations_store: ConversationStore,
         send_event_callback: Callable[..., Awaitable[None]],
         logger: logging.Logger,
     ) -> None:

@@ -521,48 +521,6 @@ class WebsocketServer:
                     message={"transcript": conversation.transcript},
                 )
 
-                # TODO implement a seperate recording manager (for diagnostics)
-                # # Save WAV file from raw audio buffer
-                # # TODO retrieve raw bytes from PushAudioInputStream to avoid saving two buffers
-                # wav_file = convert_to_wav(
-                #     format=conversation.media["format"],
-                #     audio_data=ws_session.speech_session.raw_audio_buffer,
-                #     channels=len(conversation.media["channels"]),
-                #     sample_width=2,
-                #     frame_rate=conversation.media["rate"],
-                # )
-
-                # # Upload the WAV file to Azure Blob Storage
-                # if self.blob_service_client:
-                #     self.logger.debug(
-                #         f"[{session_id}] Saving WAV file to Azure Blob Storage ({session_id}.wav)."
-                #     )
-
-                #     try:
-                #         await upload_blob_file(
-                #             blob_service_client=self.blob_service_client,
-                #             container_name=os.getenv(
-                #                 "AZURE_STORAGE_ACCOUNT_CONTAINER", "audio"
-                #             ),
-                #             file_name=f"{session_id}.wav",
-                #             data=wav_file,
-                #             content_type="audio/wav",
-                #         )
-
-                #         self.logger.info(
-                #             f"[{session_id}] WAV file saved to Azure Blob Storage: {session_id}.wav"
-                #         )
-
-                #         await self.send_event(
-                #             event=AzureGenesysEvent.RECORDING_AVAILABLE,
-                #             session_id=session_id,
-                #             message={"filename": f"{session_id}.wav"},
-                #         )
-                #     except Exception as e:
-                #         self.logger.error(
-                #             f"[{session_id}] Failed to upload WAV file to Azure Blob Storage: {e}"
-                #         )
-
             await self.send_message(
                 type=ServerMessageType.CLOSED, client_message=message
             )
