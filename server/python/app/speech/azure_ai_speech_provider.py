@@ -210,15 +210,20 @@ class AzureAISpeechProvider(SpeechProvider):
         """Handle final recognition, update store, and emit partial transcript."""
         result = json.loads(evt.result.json)
         status = result.get("RecognitionStatus")
+
         if status == "InitialSilenceTimeout":
             self.logger.warning(f"[{session_id}] Initial silence timeout.")
             return
 
-        text = evt.result.text or ""
-        if text and text[-1] not in ".!?":
-            text = text[0].upper() + text[1:] + "."
-        elif text and not text[0].isupper():
-            text = text[0].upper() + text[1:]
+        def normalize_transcript_text(text: str) -> str:
+            """Normalize transcript text by ensuring proper capitalization and punctuation."""
+            if text and text[-1] not in ".!?":
+                text = text[0].upper() + text[1:] + "."
+            elif text and not text[0].isupper():
+                text = text[0].upper() + text[1:]
+            return text
+
+        text = normalize_transcript_text(evt.result.text)
 
         offset = result.get("Offset", 0)
         duration = result.get("Duration", 0)
