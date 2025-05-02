@@ -2,12 +2,12 @@ import asyncio
 import json
 import logging
 import os
-from typing import Any, Awaitable, Callable
+from typing import Any, Awaitable, Callable, cast
 
 import azure.cognitiveservices.speech as speechsdk
 
 from ..enums import AzureGenesysEvent
-from ..models import WebSocketSessionStorage
+from ..models import AzureAISpeechSession, WebSocketSessionStorage
 from ..storage.base_conversation_store import ConversationStore
 from ..utils.identity import get_speech_token
 from .speech_provider import SpeechProvider
@@ -36,7 +36,7 @@ class AzureAISpeechProvider(SpeechProvider):
     async def initialize_session(
         self,
         session_id: str,
-        ws_session: Any,
+        ws_session: WebSocketSessionStorage,
         media: dict[str, Any],
     ) -> None:
         """Prepare audio push stream and launch recognition task."""
@@ -48,31 +48,30 @@ class AzureAISpeechProvider(SpeechProvider):
         )
         stream = speechsdk.audio.PushAudioInputStream(stream_format=audio_format)
 
-        ws_session.speech_session = {
-            "audio_buffer": stream,
-            "raw_audio": bytearray(),
-            "media": media,
-            "recognize_task": asyncio.create_task(
+        ws_session.speech_session = AzureAISpeechSession(
+            audio_buffer=stream,
+            raw_audio=bytearray(),
+            media=media,
+            recognize_task=asyncio.create_task(
                 self._recognize_speech(session_id, ws_session)
             ),
-        }
+        )
 
     async def handle_audio_frame(
         self,
         session_id: str,
-        ws_session: Any,
+        ws_session: WebSocketSessionStorage,
         media: dict[str, Any],
         data: bytes,
     ) -> None:
         """Feed incoming chunks into the push stream and raw buffer."""
-        session = getattr(ws_session, "speech_session", None)
-        if not session:
+        if ws_session.speech_session is None:
             self.logger.error(f"[{session_id}] Session not initialized.")
             return
 
         try:
-            session["audio_buffer"].write(data)
-            session["raw_audio"] += data
+            speech_session = cast(AzureAISpeechSession, ws_session.speech_session)
+            speech_session.audio_buffer.write(data)
         except Exception as ex:
             self.logger.error(f"[{session_id}] Write error: {ex}")
 
@@ -82,16 +81,17 @@ class AzureAISpeechProvider(SpeechProvider):
         ws_session: WebSocketSessionStorage,
     ) -> None:
         """Signal end of audio and await recognition finish."""
-        session = getattr(ws_session, "speech_session", None)
-        if not session:
+        if ws_session.speech_session is None:
+            self.logger.error(f"[{session_id}] Session not initialized.")
             return
 
         try:
-            session["audio_buffer"].close()
+            speech_session = cast(AzureAISpeechSession, ws_session.speech_session)
+            speech_session.audio_buffer.close()
         except Exception as ex:
             self.logger.warning(f"[{session_id}] Close error: {ex}")
 
-        task = session.get("recognize_task")
+        task = speech_session.recognize_task
         if task:
             try:
                 await task
@@ -111,7 +111,9 @@ class AzureAISpeechProvider(SpeechProvider):
         Configure SpeechRecognizer, wire callbacks, and drive the
         continuous-recognition loop until the audio stream is closed.
         """
-        media = ws_session.speech_session["media"]
+
+        speech_session = cast(AzureAISpeechSession, ws_session.speech_session)
+        media = speech_session.media
         is_multichannel = bool(media.get("channels", []) and len(media["channels"]) > 1)
 
         region = self.region
@@ -156,9 +158,7 @@ class AzureAISpeechProvider(SpeechProvider):
             speechsdk.PropertyId.Speech_SegmentationStrategy, "Semantic"
         )
 
-        audio_in = speechsdk.audio.AudioConfig(
-            stream=ws_session.speech_session["audio_buffer"]
-        )
+        audio_in = speechsdk.audio.AudioConfig(stream=speech_session.audio_buffer)
         recognizer = speechsdk.SpeechRecognizer(
             speech_config=speech_config,
             audio_config=audio_in,

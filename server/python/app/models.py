@@ -1,5 +1,7 @@
+import asyncio
 from typing import Any
 
+import azure.cognitiveservices.speech as speechsdk
 from pydantic import BaseModel, ConfigDict, Field
 
 
@@ -69,3 +71,10 @@ class ConversationsResponse(BaseModel):
 
     count: int
     conversations: list[Conversation] = Field(default_factory=list)
+
+
+class AzureAISpeechSession(BaseModel):
+    audio_buffer: speechsdk.audio.PushAudioInputStream
+    raw_audio: bytearray
+    media: dict[str, Any]
+    recognize_task: asyncio.Task
