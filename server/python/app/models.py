@@ -74,6 +74,8 @@ class ConversationsResponse(BaseModel):
 
 
 class AzureAISpeechSession(BaseModel):
+    model_config = ConfigDict(arbitrary_types_allowed=True)
+
     audio_buffer: speechsdk.audio.PushAudioInputStream
     raw_audio: bytearray
     media: dict[str, Any]
