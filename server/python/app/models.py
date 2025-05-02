@@ -45,12 +45,11 @@ class WebSocketSessionStorage(BaseModel):
 
     model_config = ConfigDict(arbitrary_types_allowed=True)
 
-    conversation_id: str | None = None
-    raw_audio_buffer: bytes | None = None
-    audio_buffer: speechsdk.audio.PushAudioInputStream | None = None
-    recognize_task: asyncio.Task | None = None
     client_seq: int = 0
     server_seq: int = 0
+    conversation_id: str | None = None
+    # Provider-specific speech session storage
+    speech_session: Any | None = None
 
 
 class Error(BaseModel):
@@ -72,3 +71,12 @@ class ConversationsResponse(BaseModel):
 
     count: int
     conversations: list[Conversation] = Field(default_factory=list)
+
+
+class AzureAISpeechSession(BaseModel):
+    model_config = ConfigDict(arbitrary_types_allowed=True)
+
+    audio_buffer: speechsdk.audio.PushAudioInputStream
+    raw_audio: bytearray
+    media: dict[str, Any]
+    recognize_task: asyncio.Task

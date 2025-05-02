@@ -5,7 +5,7 @@ import logging
 import os
 from typing import Any
 
-import azure.cognitiveservices.speech as speechsdk
+# Speech provider abstraction
 from azure.storage.blob.aio import BlobServiceClient
 from quart import Quart, request, websocket
 
@@ -24,14 +24,14 @@ from .models import (
     HealthCheckResponse,
     WebSocketSessionStorage,
 )
+from .speech.azure_ai_speech_provider import AzureAISpeechProvider
+from .speech.speech_provider import SpeechProvider
 from .storage.base_conversation_store import ConversationStore
 from .storage.conversation_store import get_conversation_store
 from .storage.in_memory_conversation_store import (
     InMemoryConversationStore,
 )
-from .utils.audio import convert_to_wav
-from .utils.identity import get_azure_credential_async, get_speech_token
-from .utils.storage import upload_blob_file
+from .utils.identity import get_azure_credential_async
 
 
 class WebsocketServer:
@@ -42,6 +42,7 @@ class WebsocketServer:
     blob_service_client: BlobServiceClient | None = None
     conversations_store: ConversationStore | None = None
     event_publisher: EventPublisher | None = None
+    speech_provider: SpeechProvider | None = None
 
     def __init__(self):
         """Initialize the server"""
@@ -98,6 +99,17 @@ class WebsocketServer:
         ):
             self.event_publisher = EventPublisher()
 
+        if os.getenv("AZURE_SPEECH_REGION") and (
+            os.getenv("AZURE_SPEECH_KEY") or os.getenv("AZURE_SPEECH_RESOURCE_ID")
+        ):
+            self.speech_provider = AzureAISpeechProvider(
+                self.conversations_store, self.send_event, self.logger
+            )
+        else:
+            raise RuntimeError(
+                "Azure Speech configuration is required. Please set AZURE_SPEECH_REGION and either AZURE_SPEECH_KEY or AZURE_SPEECH_RESOURCE_ID."
+            )
+
     async def close_connections(self):
         """Close connections after serving"""
         if self.blob_service_client:
@@ -108,6 +120,9 @@ class WebsocketServer:
 
         if self.conversations_store:
             await self.conversations_store.close()
+
+        if self.speech_provider:
+            await self.speech_provider.close()
 
     async def health_check(self):
         """
@@ -435,6 +450,13 @@ class WebsocketServer:
         )
         await self.conversations_store.set(conversation)
 
+        # Initialize speech session
+        if self.speech_provider:
+            ws_session = self.active_ws_sessions[session_id]
+            await self.speech_provider.initialize_session(
+                session_id, ws_session, selected_media
+            )
+
         await self.send_message(
             type=ServerMessageType.OPENED,
             client_message=message,
@@ -492,8 +514,8 @@ class WebsocketServer:
         conversation = await self.conversations_store.get(conversation_id)
 
         # Close audio buffer (and recognition) if the session is ended
-        if ws_session and ws_session.audio_buffer:
-            ws_session.audio_buffer.close()
+        if self.speech_provider:
+            await self.speech_provider.shutdown_session(session_id, ws_session)
 
         if parameters["reason"] == CloseReason.END:
             if conversation and conversation.media:
@@ -502,47 +524,6 @@ class WebsocketServer:
                     session_id=session_id,
                     message={"transcript": conversation.transcript},
                 )
-
-                # Save WAV file from raw audio buffer
-                # TODO retrieve raw bytes from PushAudioInputStream to avoid saving two buffers
-                wav_file = convert_to_wav(
-                    format=conversation.media["format"],
-                    audio_data=ws_session.raw_audio_buffer,
-                    channels=len(conversation.media["channels"]),
-                    sample_width=2,
-                    frame_rate=conversation.media["rate"],
-                )
-
-                # Upload the WAV file to Azure Blob Storage
-                if self.blob_service_client:
-                    self.logger.debug(
-                        f"[{session_id}] Saving WAV file to Azure Blob Storage ({session_id}.wav)."
-                    )
-
-                    try:
-                        await upload_blob_file(
-                            blob_service_client=self.blob_service_client,
-                            container_name=os.getenv(
-                                "AZURE_STORAGE_ACCOUNT_CONTAINER", "audio"
-                            ),
-                            file_name=f"{session_id}.wav",
-                            data=wav_file,
-                            content_type="audio/wav",
-                        )
-
-                        self.logger.info(
-                            f"[{session_id}] WAV file saved to Azure Blob Storage: {session_id}.wav"
-                        )
-
-                        await self.send_event(
-                            event=AzureGenesysEvent.RECORDING_AVAILABLE,
-                            session_id=session_id,
-                            message={"filename": f"{session_id}.wav"},
-                        )
-                    except Exception as e:
-                        self.logger.error(
-                            f"[{session_id}] Failed to upload WAV file to Azure Blob Storage: {e}"
-                        )
 
             await self.send_message(
                 type=ServerMessageType.CLOSED, client_message=message
@@ -588,36 +569,16 @@ class WebsocketServer:
         position=\frac{samplesProcessed}{sampleRate}
         """
         ws_session = self.active_ws_sessions[session_id]
-        conversation_id = ws_session.conversation_id
-        conversation = await self.conversations_store.get(conversation_id)
+
+        if not self.speech_provider:
+            self.logger.error(f"[{session_id}] No speech provider configured.")
+            return
+
+        conversation = await self.conversations_store.get(ws_session.conversation_id)
         media = conversation.media
-
-        self.logger.debug(f"[{session_id}] Received {len(data)} bytes of audio data.")
-
-        if ws_session.audio_buffer is None:
-            self.logger.info(
-                f"[{session_id}] type {media['type']}, format {media['format']}, rate {media['rate']}, channels {len(media['channels'])}"
-            )
-
-            audio_format = speechsdk.audio.AudioStreamFormat(
-                samples_per_second=media["rate"],
-                bits_per_sample=8,
-                channels=len(media["channels"]),
-                wave_stream_format=speechsdk.AudioStreamWaveFormat.MULAW,
-            )
-
-            stream = speechsdk.audio.PushAudioInputStream(stream_format=audio_format)
-            ws_session.audio_buffer = stream
-            ws_session.raw_audio_buffer = bytearray()
-
-            # Start the synchronous speech recognition as a asyncio task
-            ws_session.recognize_task = asyncio.create_task(
-                self.recognize_speech(session_id)
-            )
-
-        # Append the buffers to the audio stream
-        ws_session.audio_buffer.write(data)
-        ws_session.raw_audio_buffer += data
+        await self.speech_provider.handle_audio_frame(
+            session_id, ws_session, media, data
+        )
 
     async def send_event(
         self,
@@ -640,202 +601,3 @@ class WebsocketServer:
                 properties=properties,
             )
             self.logger.debug(f"[{session_id}] Sending event: {event} {message}")
-
-    async def recognize_speech(self, session_id: str):
-        """Recognize speech from audio buffer using Azure Speech to Text."""
-
-        # Determine speech configuration based on channel count and authentication method
-        # Use multichannel (preview) for stereo calls
-        ws_session = self.active_ws_sessions[session_id]
-        conversation_id = ws_session.conversation_id
-        conversation = await self.conversations_store.get(conversation_id)
-
-        is_multichannel = (
-            len(conversation.media["channels"]) > 1
-            if conversation and conversation.media
-            else False
-        )
-        region = os.environ["AZURE_SPEECH_REGION"]
-        endpoint = (
-            f"wss://{region}.stt.speech.microsoft.com/speech/recognition/conversation/cognitiveservices/v1?setfeature=multichannel2"
-            if is_multichannel
-            else None
-        )
-
-        # Create speech config with appropriate authentication (speech key vs managed identity)
-        if speech_key := os.getenv("AZURE_SPEECH_KEY"):
-            speech_config = speechsdk.SpeechConfig(
-                subscription=speech_key,
-                region=None if is_multichannel else region,
-                endpoint=endpoint,
-            )
-        else:
-            auth_token = get_speech_token(os.environ["AZURE_SPEECH_RESOURCE_ID"])
-            speech_config = speechsdk.SpeechConfig(
-                auth_token=auth_token,
-                region=None if is_multichannel else region,
-                endpoint=endpoint,
-            )
-
-        loop = asyncio.get_running_loop()
-        recognition_done = asyncio.Event()
-
-        # Speech configuration
-        languages = os.getenv("AZURE_SPEECH_LANGUAGES", "en-US").split(",")
-
-        if len(languages) > 1:
-            auto_detect_source_language_config = None
-            speech_config.speech_recognition_language = languages[
-                0
-            ]  # Set to the only available language
-        else:
-            auto_detect_source_language_config = (
-                speechsdk.languageconfig.AutoDetectSourceLanguageConfig(
-                    languages=languages
-                )
-            )
-            speech_config.set_property(
-                property_id=speechsdk.PropertyId.SpeechServiceConnection_LanguageIdMode,
-                value="Continuous",
-            )
-
-        speech_config.output_format = speechsdk.OutputFormat.Detailed
-        speech_config.request_word_level_timestamps()
-        speech_config.enable_audio_logging()
-        speech_config.set_profanity(speechsdk.ProfanityOption.Masked)
-
-        # Enable Semantic Segmentation (preview) (en-us only)
-        # https://learn.microsoft.com/en-us/azure/ai-services/speech-service/how-to-recognize-speech?pivots=programming-language-python#semantic-segmentation
-        speech_config.set_property(
-            speechsdk.PropertyId.Speech_SegmentationStrategy, "Semantic"
-        )
-
-        audio_config = speechsdk.audio.AudioConfig(
-            stream=self.active_ws_sessions[session_id].audio_buffer
-        )
-        speech_recognizer = speechsdk.SpeechRecognizer(
-            speech_config=speech_config,
-            audio_config=audio_config,
-            auto_detect_source_language_config=auto_detect_source_language_config,
-        )
-
-        # Enable phrase list
-        # https://learn.microsoft.com/en-us/azure/ai-services/speech-service/improve-accuracy-phrase-list?tabs=terminal&pivots=programming-language-python
-        phrase_list_grammar = speechsdk.PhraseListGrammar.from_recognizer(
-            speech_recognizer
-        )
-        phrase_list_grammar.addPhrase("Contoso")
-
-        # Connect callbacks to the events fired by the speech recognizer
-        def recognizing_cb(event: speechsdk.SpeechRecognitionEventArgs):
-            """Callback that continuously logs the recognized speech."""
-            self.logger.info(f"[{session_id}] Recognizing: {event.result.text}")
-            self.logger.debug(f"[{session_id}] Recognizing JSON: {event.result.json}")
-
-        def recognized_cb(event: speechsdk.SpeechRecognitionEventArgs):
-            """Callback that logs the recognized speech once the recognition is done."""
-            self.logger.info(f"[{session_id}] Recognized: {event.result.text}")
-            self.logger.debug(f"[{session_id}] Recognized JSON: {event.result.json}")
-            json_data = json.loads(event.result.json)
-
-            if json_data["RecognitionStatus"] == "InitialSilenceTimeout":
-                self.logger.warning(
-                    f"[{session_id}] Initial silence timeout. No speech detected."
-                )
-                return
-
-            text = event.result.text
-
-            # Capitalize first letter and add period if missing proper sentence ending
-            if text and not any(
-                text.endswith(end) for end in [".", "!", "?", ":", ";"]
-            ):
-                text = text[0].upper() + text[1:] + "."
-            elif text and not text[0].isupper():
-                text = text[0].upper() + text[1:]
-
-            # Calculate start and end time in seconds
-            offset_100ns = json_data.get("Offset", 0)
-            duration_100ns = json_data.get("Duration", 0)
-            start_sec = offset_100ns / 10_000_000
-            end_sec = (offset_100ns + duration_100ns) / 10_000_000
-
-            def to_iso8601(seconds):
-                return f"PT{seconds:.2f}S"
-
-            # Store transcript in persistent storage
-            async def update_transcript():
-                ws_session = self.active_ws_sessions[session_id]
-                transcript_item = {
-                    "channel": json_data["Channel"] if is_multichannel else None,
-                    "text": text,
-                    "start": to_iso8601(start_sec),
-                    "end": to_iso8601(end_sec),
-                }
-
-                await self.conversations_store.append_transcript(
-                    ws_session.conversation_id, transcript_item
-                )
-
-            asyncio.run_coroutine_threadsafe(update_transcript(), loop)
-
-            # Send transcript to Event Hub (add start/end in ISO 8601)
-            asyncio.run_coroutine_threadsafe(
-                self.send_event(
-                    event=AzureGenesysEvent.PARTIAL_TRANSCRIPT,
-                    session_id=session_id,
-                    message={
-                        "text": text,
-                        "channel": json_data["Channel"] if is_multichannel else None,
-                        "start": to_iso8601(start_sec),
-                        "end": to_iso8601(end_sec),
-                        "data": json_data,
-                    },
-                ),
-                loop,
-            )
-
-        def session_stopped_cb(event: speechsdk.SpeechRecognitionCanceledEventArgs):
-            """Callback that signals to stop continuous recognition upon receiving an event."""
-            self.logger.info(f"[{session_id}] Session stopped: {event.session_id}")
-            recognition_done.set()
-
-        # Connect callbacks to the events fired by the speech recognizer
-        speech_recognizer.recognizing.connect(
-            lambda event: loop.call_soon_threadsafe(recognizing_cb, event)
-        )
-        speech_recognizer.recognized.connect(
-            lambda event: loop.call_soon_threadsafe(recognized_cb, event)
-        )
-        speech_recognizer.session_stopped.connect(
-            lambda event: loop.call_soon_threadsafe(session_stopped_cb, event)
-        )
-
-        speech_recognizer.session_started.connect(
-            lambda event: self.logger.info(
-                f"[{session_id}] Session started: {event.session_id}"
-            )
-        )
-
-        speech_recognizer.canceled.connect(
-            lambda event: self.logger.info(
-                f"[{session_id}] Canceled: {event.session_id}"
-            )
-        )
-
-        self.logger.info(f"[{session_id}] Starting continuous recognition.")
-
-        # Start continuous speech recognition
-        await asyncio.to_thread(
-            speech_recognizer.start_continuous_recognition_async().get
-        )
-
-        # Wait until all input processed without blocking the event loop
-        await recognition_done.wait()
-
-        # Stop recognition and clean up without blocking the event loop
-        await asyncio.to_thread(
-            speech_recognizer.stop_continuous_recognition_async().get
-        )
-
-        self.logger.info(f"[{session_id}] Stopped continuous recognition.")
