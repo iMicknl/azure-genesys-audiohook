@@ -105,6 +105,10 @@ class WebsocketServer:
             self.speech_provider = AzureAISpeechProvider(
                 self.conversations_store, self.send_event, self.logger
             )
+        else:
+            raise RuntimeError(
+                "Azure Speech configuration is required. Please set AZURE_SPEECH_REGION and either AZURE_SPEECH_KEY or AZURE_SPEECH_RESOURCE_ID."
+            )
 
     async def close_connections(self):
         """Close connections after serving"""
