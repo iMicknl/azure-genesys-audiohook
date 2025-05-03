@@ -94,7 +94,7 @@ class WebsocketServer:
 
         self.conversations_store = get_conversation_store()
 
-        if os.getenv("AZURE_EVENT_HUB_HOSTNAME") or os.getenv(
+        if os.getenv("AZURE_EVENT_HUB_FULLY_QUALIFIED_NAMESPACE") or os.getenv(
             "AZURE_EVENT_HUB_CONNECTION_STRING"
         ):
             self.event_publisher = EventPublisher()

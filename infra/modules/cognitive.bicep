@@ -57,3 +57,5 @@ output speechEndpoint string = speech.properties.endpoint
 output gpt4oDeploymentName string = gpt4oDeployment.name
 output openAiId string = openAi.id
 output speechId string = speech.id
+@secure()
+output speechKey string = speech.listKeys().key1

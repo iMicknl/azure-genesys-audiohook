@@ -12,13 +12,18 @@ param cosmosDbContainer string
 param speechRegion string
 param apiKeySecretUri string
 param clientSecretUri string
+param speechKeySecretUri string
 param azureSpeechLanguages string
+param eventHubNamespaceName string
+param eventHubName string
 
 // Helper to sanitize environmentName for valid container app name
 var sanitizedEnvName = toLower(replace(replace(replace(replace(environmentName, ' ', '-'), '--', '-'), '[^a-zA-Z0-9-]', ''), '_', '-'))
 var containerAppName = take('ca-${sanitizedEnvName}-${uniqueSuffix}', 32)
 var containerEnvName = take('cae-${sanitizedEnvName}-${uniqueSuffix}', 32)
 var logAnalyticsName = take('log-${sanitizedEnvName}-${uniqueSuffix}', 63)
+var serviceBusSuffix = '.servicebus.windows.net'
+var eventHubNamespaceFullyQualified = '${eventHubNamespaceName}${serviceBusSuffix}'
 
 resource logAnalytics 'Microsoft.OperationalInsights/workspaces@2022-10-01' = {
   name: logAnalyticsName
@@ -76,6 +81,11 @@ resource containerApp 'Microsoft.App/containerApps@2024-10-02-preview' = {
           keyVaultUrl: clientSecretUri
           identity: 'system'
         }
+        {
+          name: 'azure-speech-key'
+          keyVaultUrl: speechKeySecretUri
+          identity: 'system'
+        }
       ]
     }
     template: {
@@ -99,6 +109,11 @@ resource containerApp 'Microsoft.App/containerApps@2024-10-02-preview' = {
             {
               name: 'AZURE_SPEECH_RESOURCE_ID'
               value: speechResourceId
+            }
+            // TODO - remove when stereo preview works with managed identity
+            {
+              name: 'AZURE_SPEECH_KEY'
+              secretRef: 'azure-speech-key'
             }
             {
               name: 'AZURE_SPEECH_REGION'
@@ -127,6 +142,14 @@ resource containerApp 'Microsoft.App/containerApps@2024-10-02-preview' = {
             {
               name: 'DEBUG_MODE'
               value: 'true'
+            }
+            {
+              name: 'AZURE_EVENT_HUB_FULLY_QUALIFIED_NAMESPACE'
+              value: eventHubNamespaceFullyQualified
+            }
+            {
+              name: 'AZURE_EVENT_HUB_NAME'
+              value: eventHubName
             }
           ]
           resources: {

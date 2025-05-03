@@ -4,6 +4,7 @@ param speechId string
 param cosmosDbAccountName string
 param cosmosDbDataContributorRoleDefinitionId string
 param keyVaultName string
+param eventHubNamespaceName string
 
 resource openAiResource 'Microsoft.CognitiveServices/accounts@2023-05-01' existing = {
   name: last(split(openAiId, '/'))
@@ -60,6 +61,20 @@ resource keyVaultRoleAssignment 'Microsoft.Authorization/roleAssignments@2022-04
   scope: keyVault
   properties: {
     roleDefinitionId: subscriptionResourceId('Microsoft.Authorization/roleDefinitions', 'b86a8fe4-44ce-4948-aee5-eccb2c155cd7')
+    principalId: containerAppPrincipalId
+    principalType: 'ServicePrincipal'
+  }
+}
+
+resource eventHubNamespace 'Microsoft.EventHub/namespaces@2022-10-01-preview' existing = {
+  name: eventHubNamespaceName
+}
+
+resource eventHubRoleAssignment 'Microsoft.Authorization/roleAssignments@2022-04-01' = {
+  name: guid(eventHubNamespace.id, containerAppPrincipalId, 'Azure Event Hubs Data Sender')
+  scope: eventHubNamespace
+  properties: {
+    roleDefinitionId: subscriptionResourceId('Microsoft.Authorization/roleDefinitions', '2b629674-e913-4c01-ae53-ef4638d8f975')
     principalId: containerAppPrincipalId
     principalType: 'ServicePrincipal'
   }
