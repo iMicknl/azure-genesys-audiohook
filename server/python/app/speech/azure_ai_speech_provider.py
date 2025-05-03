@@ -16,6 +16,8 @@ from .speech_provider import SpeechProvider
 class AzureAISpeechProvider(SpeechProvider):
     """Azure AI Speech implementation of SpeechProvider."""
 
+    supported_languages: list[str] = []
+
     def __init__(
         self,
         conversations_store: ConversationStore,
@@ -31,7 +33,7 @@ class AzureAISpeechProvider(SpeechProvider):
         self.speech_key: str | None = os.getenv("AZURE_SPEECH_KEY")
         self.speech_resource_id: str | None = os.getenv("AZURE_SPEECH_RESOURCE_ID")
         languages = os.getenv("AZURE_SPEECH_LANGUAGES", "en-US")
-        self.languages: list[str] = languages.split(",") if languages else ["en-US"]
+        self.supported_languages = languages.split(",") if languages else ["en-US"]
 
     async def initialize_session(
         self,
@@ -138,12 +140,12 @@ class AzureAISpeechProvider(SpeechProvider):
                 endpoint=endpoint,
             )
 
-        if len(self.languages) > 1:
-            speech_config.speech_recognition_language = self.languages[0]
+        if len(self.supported_languages) > 1:
+            speech_config.speech_recognition_language = self.supported_languages[0]
             auto_detect = None
         else:
             auto_detect = speechsdk.languageconfig.AutoDetectSourceLanguageConfig(
-                languages=self.languages
+                languages=self.supported_languages
             )
             speech_config.set_property(
                 speechsdk.PropertyId.SpeechServiceConnection_LanguageIdMode,
