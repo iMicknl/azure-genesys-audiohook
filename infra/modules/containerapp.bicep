@@ -12,6 +12,7 @@ param cosmosDbContainer string
 param speechRegion string
 param apiKeySecretUri string
 param clientSecretUri string
+param speechKeySecretUri string
 param azureSpeechLanguages string
 param eventHubNamespaceName string
 param eventHubName string
@@ -80,6 +81,11 @@ resource containerApp 'Microsoft.App/containerApps@2024-10-02-preview' = {
           keyVaultUrl: clientSecretUri
           identity: 'system'
         }
+        {
+          name: 'azure-speech-key'
+          keyVaultUrl: speechKeySecretUri
+          identity: 'system'
+        }
       ]
     }
     template: {
@@ -103,6 +109,11 @@ resource containerApp 'Microsoft.App/containerApps@2024-10-02-preview' = {
             {
               name: 'AZURE_SPEECH_RESOURCE_ID'
               value: speechResourceId
+            }
+            // TODO - remove when stereo preview works with managed identity
+            {
+              name: 'AZURE_SPEECH_KEY'
+              secretRef: 'azure-speech-key'
             }
             {
               name: 'AZURE_SPEECH_REGION'
