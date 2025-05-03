@@ -74,7 +74,7 @@ resource eventHubRoleAssignment 'Microsoft.Authorization/roleAssignments@2022-04
   name: guid(eventHubNamespace.id, containerAppPrincipalId, 'Azure Event Hubs Data Sender')
   scope: eventHubNamespace
   properties: {
-    roleDefinitionId: subscriptionResourceId('Microsoft.Authorization/roleDefinitions', '761837e9-9158-4ddf-954e-7e886a4db659')
+    roleDefinitionId: subscriptionResourceId('Microsoft.Authorization/roleDefinitions', '2b629674-e913-4c01-ae53-ef4638d8f975')
     principalId: containerAppPrincipalId
     principalType: 'ServicePrincipal'
   }
