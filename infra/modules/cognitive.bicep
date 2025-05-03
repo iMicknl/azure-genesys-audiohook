@@ -38,6 +38,23 @@ resource gpt4oDeployment 'Microsoft.CognitiveServices/accounts/deployments@2023-
   }
 }
 
+resource gpt4oTranscribeDeployment 'Microsoft.CognitiveServices/accounts/deployments@2023-05-01' = {
+  parent: openAi
+  name: 'gpt-4o-transcribe'
+  sku: {
+    name: 'GlobalStandard'
+    capacity: 60
+  }
+  properties: {
+    model: {
+      format: 'OpenAI'
+      name: 'gpt-4o-transcribe'
+      version: '2025-03-20'
+    }
+    raiPolicyName: 'Microsoft.DefaultV2'
+  }
+}
+
 resource speech 'Microsoft.CognitiveServices/accounts@2023-05-01' = {
   name: speechName
   location: location
