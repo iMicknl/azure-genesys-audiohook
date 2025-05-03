@@ -26,7 +26,7 @@ resource eventHub 'Microsoft.EventHub/namespaces/eventhubs@2022-10-01-preview' =
   name: eventHubName
   properties: {
     messageRetentionInDays: 5
-    partitionCount: 1
+    partitionCount: 2
   }
 }
 

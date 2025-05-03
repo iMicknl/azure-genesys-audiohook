@@ -21,6 +21,8 @@ var sanitizedEnvName = toLower(replace(replace(replace(replace(environmentName, 
 var containerAppName = take('ca-${sanitizedEnvName}-${uniqueSuffix}', 32)
 var containerEnvName = take('cae-${sanitizedEnvName}-${uniqueSuffix}', 32)
 var logAnalyticsName = take('log-${sanitizedEnvName}-${uniqueSuffix}', 63)
+var serviceBusSuffix = '.servicebus.windows.net'
+var eventHubNamespaceFullyQualified = '${eventHubNamespaceName}${serviceBusSuffix}'
 
 resource logAnalytics 'Microsoft.OperationalInsights/workspaces@2022-10-01' = {
   name: logAnalyticsName
@@ -131,8 +133,8 @@ resource containerApp 'Microsoft.App/containerApps@2024-10-02-preview' = {
               value: 'true'
             }
             {
-              name: 'AZURE_EVENT_HUB_NAMESPACE'
-              value: eventHubNamespaceName
+              name: 'AZURE_EVENT_HUB_FULLY_QUALIFIED_NAMESPACE'
+              value: eventHubNamespaceFullyQualified
             }
             {
               name: 'AZURE_EVENT_HUB_NAME'

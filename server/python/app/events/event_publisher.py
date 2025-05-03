@@ -14,7 +14,9 @@ class EventPublisher:
     """
 
     def __init__(self):
-        if fully_qualified_namespace := os.getenv("AZURE_EVENT_HUB_HOSTNAME"):
+        if fully_qualified_namespace := os.getenv(
+            "AZURE_EVENT_HUB_FULLY_QUALIFIED_NAMESPACE"
+        ):
             self.producer_client = EventHubProducerClient(
                 fully_qualified_namespace=fully_qualified_namespace,
                 eventhub_name=os.environ["AZURE_EVENT_HUB_NAME"],
