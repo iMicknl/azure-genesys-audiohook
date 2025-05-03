@@ -66,6 +66,17 @@ module cosmosdb 'modules/cosmosdb.bicep' = {
   }
 }
 
+module eventhub 'modules/eventhub.bicep' = {
+  scope: rg
+  name: 'eventhub-deployment'
+  params: {
+    location: location
+    environmentName: environmentName
+    uniqueSuffix: uniqueSuffix
+    tags: tags
+  }
+}
+
 // Deploy container app after cognitive services, storage, and key vault
 module containerapp 'modules/containerapp.bicep' = {
   scope: rg
@@ -86,6 +97,8 @@ module containerapp 'modules/containerapp.bicep' = {
     clientSecretUri: keyvault.outputs.clientSecretUri
     speechRegion: location
     azureSpeechLanguages: azureSpeechLanguages
+    eventHubNamespaceName: eventhub.outputs.eventHubNamespaceName
+    eventHubName: eventhub.outputs.eventHubName
   }
 }
 
@@ -100,6 +113,7 @@ module containerAppRoleAssignments 'modules/containerapp-roles.bicep' = {
     cosmosDbAccountName: cosmosdb.outputs.cosmosDbAccountName
     cosmosDbDataContributorRoleDefinitionId: cosmosdb.outputs.cosmosDbDataContributorRoleDefinitionId
     keyVaultName: keyvault.outputs.keyVaultName
+    eventHubNamespaceName: eventhub.outputs.eventHubNamespaceName
   }
 }
 
