@@ -53,6 +53,9 @@ resource gpt4oTranscribeDeployment 'Microsoft.CognitiveServices/accounts/deploym
     }
     raiPolicyName: 'Microsoft.DefaultV2'
   }
+  // Azure may return a RequestConflict error if multiple deployments are created in parallel under the same OpenAI account.
+  // This dependsOn ensures deployments are serialized to avoid conflicts.
+  dependsOn: [ gpt4oDeployment ]
 }
 
 resource speech 'Microsoft.CognitiveServices/accounts@2023-05-01' = {
