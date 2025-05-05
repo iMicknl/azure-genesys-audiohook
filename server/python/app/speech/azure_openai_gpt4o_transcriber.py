@@ -8,7 +8,7 @@ from typing import Any, Awaitable, Callable
 import websockets
 
 from ..enums import AzureGenesysEvent
-from ..models import WebSocketSessionStorage
+from ..models import TranscriptItem, WebSocketSessionStorage
 from ..storage.base_conversation_store import ConversationStore
 from ..utils.audio import split_stream
 from .speech_provider import SpeechProvider
@@ -64,7 +64,7 @@ class AzureOpenAIGPT4oTranscriber(SpeechProvider):
                     "input_audio_format": "g711_ulaw",
                     "input_audio_transcription": {
                         "model": "gpt-4o-transcribe",
-                        "prompt": "Respond in English.",
+                        "prompt": "Transcribe the incoming audio in real time.",
                         # "language": "",  # ISO-639-1 format
                     },
                     "input_audio_noise_reduction": {"type": "near_field"},
@@ -202,13 +202,12 @@ class AzureOpenAIGPT4oTranscriber(SpeechProvider):
                         == "conversation.item.input_audio_transcription.completed"
                     ):
                         transcript = event["transcript"]
-
-                        item: dict[str, Any] = {
-                            "channel": channel,
-                            "text": transcript,
-                            "start": None,
-                            "end": None,
-                        }
+                        item = TranscriptItem(
+                            channel=channel,
+                            text=transcript,
+                            start=None,
+                            end=None,
+                        )
                         await self.conversations_store.append_transcript(
                             ws_session.conversation_id, item
                         )

@@ -7,7 +7,7 @@ from typing import Any, Awaitable, Callable, cast
 import azure.cognitiveservices.speech as speechsdk
 
 from ..enums import AzureGenesysEvent
-from ..models import AzureAISpeechSession, WebSocketSessionStorage
+from ..models import AzureAISpeechSession, TranscriptItem, WebSocketSessionStorage
 from ..storage.base_conversation_store import ConversationStore
 from ..utils.identity import get_speech_token
 from .speech_provider import SpeechProvider
@@ -233,12 +233,14 @@ class AzureAISpeechProvider(SpeechProvider):
         end = f"PT{(offset + duration) / 10_000_000:.2f}S"
 
         async def _update() -> None:
-            item: dict[str, Any] = {
-                "channel": result.get("Channel") if is_multichannel else None,
-                "text": text,
-                "start": start,
-                "end": end,
-            }
+            channel = (result.get("Channel") if is_multichannel else None,)
+            item = TranscriptItem(
+                channel=channel,
+                text=text,
+                start=start,
+                end=end,
+            )
+
             await self.conversations_store.append_transcript(
                 ws_session.conversation_id, item
             )
