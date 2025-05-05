@@ -2,9 +2,14 @@
 
 This project provides a reference implementation of a WebSocket server on Azure that integrates with the [Genesys AudioHook protocol](https://developer.genesys.cloud/devapps/audiohook) for real-time transcription. It implements the [AudioHook Monitor](https://help.mypurecloud.com/articles/audiohook-monitor-overview/), where audio is streamed from the client to the server, and the server does not return results to the client.
 
-With this AudioHook server, you can connect your own speech processing pipeline—including custom speech-to-text or generative audio models—while maintaining data security and enabling seamless integration with other cloud-native applications.
+This AudioHook server enables you to connect your own speech processing pipeline—such as Azure AI (Custom) Speech, GPT-4o Transcribe, Whisper, or other services—while maintaining data security and seamless integration with cloud-native applications.
 
 Real-time transcription enables advanced call center analytics, such as live summarization, agent coaching, and instant question answering, to improve customer experience and operational efficiency.
+
+> [!NOTE]
+> This repository provides an example implementation and is not intended for production use.
+> It is provided as-is, without support, and is meant to demonstrate Microsoft Azure services and tools.
+> If you plan to use this code in a production environment, review and implement appropriate security and operational best practices.
 
 ## Components
 
