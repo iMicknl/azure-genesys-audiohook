@@ -55,7 +55,7 @@ Deploy this accelerator using the provided [infrastructure-as-code (Bicep)](./in
 > [!IMPORTANT]
 > The current infrastructure-as-code templates deploy resources using public networking by default. Adapt this configuration to meet your organization's security requirements. Genesys Cloud requires a publicly accessible endpoint for AudioHook integration. In production environments, it is recommended to secure your deployment using Azure Front Door, Azure Web Application Firewall (WAF), or by restricting access to only the IP address ranges used by Genesys Cloud.
 
-To obtain the IP address ranges for your region that Genesys Cloud AudioHook protocol requests originate from, refer to the [Genesys Cloud IP address range documentation](https://help.mypurecloud.com/faqs/obtain-the-ip-address-range-for-my-region-for-audiohook/).
+> To obtain the IP address ranges for your region that Genesys Cloud AudioHook protocol requests originate from, refer to the [Genesys Cloud IP address range documentation](https://help.mypurecloud.com/faqs/obtain-the-ip-address-range-for-my-region-for-audiohook/).
 
 
 ## Configure Genesys Cloud AudioHook
