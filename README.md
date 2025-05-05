@@ -41,10 +41,10 @@ Deploy this accelerator using the provided [infrastructure-as-code (Bicep)](./in
 
 3. During deployment, you’ll be prompted for:
 
-    | Parameter           | Description                                                                 |
-    |---------------------|-----------------------------------------------------------------------------|
+    | Parameter           | Description                                                                  |
+    |---------------------|------------------------------------------------------------------------------|
     | Azure Subscription  | The Azure subscription for resource deployment.                              |
-    | Azure Location      | The Azure region for resources (e.g., swedencentral).                       |
+    | Azure Location      | The Azure region for resources                                               |
     | Environment Name    | A unique environment name (used as a prefix for resource names).             |
 
     For best compatibility, use `swedencentral` as your Azure region. Other regions may not be fully supported or tested.
