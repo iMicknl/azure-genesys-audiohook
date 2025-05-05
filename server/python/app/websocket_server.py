@@ -537,10 +537,14 @@ class WebsocketServer:
 
         if parameters["reason"] == CloseReason.END:
             if conversation and conversation.media:
+                transcript = [
+                    item.model_dump() if hasattr(item, "model_dump") else dict(item)
+                    for item in (conversation.transcript or [])
+                ]
                 await self.send_event(
                     event=AzureGenesysEvent.TRANSCRIPT_AVAILABLE,
                     session_id=session_id,
-                    message={"transcript": conversation.transcript},
+                    message={"transcript": transcript},
                 )
 
             await self.send_message(

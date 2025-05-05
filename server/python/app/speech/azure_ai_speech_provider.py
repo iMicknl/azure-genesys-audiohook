@@ -232,15 +232,16 @@ class AzureAISpeechProvider(SpeechProvider):
         start = f"PT{offset / 10_000_000:.2f}S"
         end = f"PT{(offset + duration) / 10_000_000:.2f}S"
 
-        async def _update() -> None:
-            channel = (result.get("Channel") if is_multichannel else None,)
-            item = TranscriptItem(
-                channel=channel,
-                text=text,
-                start=start,
-                end=end,
-            )
+        channel = result.get("Channel") if is_multichannel else None
 
+        item = TranscriptItem(
+            channel=channel,
+            text=text,
+            start=start,
+            end=end,
+        )
+
+        async def _update() -> None:
             await self.conversations_store.append_transcript(
                 ws_session.conversation_id, item
             )
@@ -250,13 +251,7 @@ class AzureAISpeechProvider(SpeechProvider):
             self.send_event(
                 event=AzureGenesysEvent.PARTIAL_TRANSCRIPT,
                 session_id=session_id,
-                message={
-                    "text": text,
-                    "channel": result.get("Channel") if is_multichannel else None,
-                    "start": start,
-                    "end": end,
-                    "data": result,
-                },
+                message=item.model_dump(),
             ),
             loop,
         )
