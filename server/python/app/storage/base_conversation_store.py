@@ -1,4 +1,4 @@
-from ..models import Conversation
+from ..models import Conversation, TranscriptItem
 
 
 class ConversationStore:
@@ -37,7 +37,7 @@ class ConversationStore:
         """Append an RTT entry to the conversation's rtt list."""
         raise NotImplementedError
 
-    async def append_transcript(self, conversation_id: str, item: dict):
+    async def append_transcript(self, conversation_id: str, item: TranscriptItem):
         """Append an item to the conversation's transcript list."""
         raise NotImplementedError
 

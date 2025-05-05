@@ -23,6 +23,13 @@ class ServerMessageBase(MessageBase):
     position: str
 
 
+class TranscriptItem(BaseModel):
+    channel: int
+    text: str
+    start: str | None = None  # ISO 8601 duration string, e.g., "PT1.23S"
+    end: str | None = None  # ISO 8601 duration string, e.g., "PT1.23S"
+
+
 class Conversation(BaseModel):
     """Pydantic model to store conversation details"""
 
@@ -37,7 +44,7 @@ class Conversation(BaseModel):
     media: dict[str, Any]
     position: str
     rtt: list[str] = Field(default_factory=list)
-    transcript: list[dict[str, Any]] = Field(default_factory=list)
+    transcript: list[TranscriptItem] = Field(default_factory=list)
 
 
 class WebSocketSessionStorage(BaseModel):
