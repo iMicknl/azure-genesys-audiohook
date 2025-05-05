@@ -47,7 +47,7 @@ class AzureOpenAIGPT4oTranscriber(SpeechProvider):
         ws_session: WebSocketSessionStorage,
         media: dict[str, Any],
     ) -> None:
-        """Create OpenAI transcription session and open websocket connection."""
+        """Create two OpenAI transcription websocket connections: one for customer, one for agent."""
         ws_url = (
             self.endpoint.replace("https://", "wss://")
             + "/openai/realtime?api-version=2025-04-01-preview&intent=transcription"
@@ -55,32 +55,38 @@ class AzureOpenAIGPT4oTranscriber(SpeechProvider):
         headers = {
             "api-key": self.api_key,
         }
-        ws = await websockets.connect(ws_url, additional_headers=headers)
-        # Send initial session config
 
-        session_config = {
-            "type": "transcription_session.update",
-            "session": {
-                "input_audio_format": "g711_ulaw",
-                "input_audio_transcription": {
-                    "model": "gpt-4o-transcribe",
-                    "prompt": "Respond in English.",
-                    # "language": "",  # ISO-639-1 format
+        async def create_ws_and_task(channel: int):
+            ws = await websockets.connect(ws_url, additional_headers=headers)
+            session_config = {
+                "type": "transcription_session.update",
+                "session": {
+                    "input_audio_format": "g711_ulaw",
+                    "input_audio_transcription": {
+                        "model": "gpt-4o-transcribe",
+                        "prompt": "Respond in English.",
+                        # "language": "",  # ISO-639-1 format
+                    },
+                    "input_audio_noise_reduction": {"type": "near_field"},
+                    "turn_detection": {"type": "server_vad"},
                 },
-                "input_audio_noise_reduction": {"type": "near_field"},
-                "turn_detection": {"type": "server_vad"},
-                # "include": ["item.input_audio_transcription.logprobs"],
-            },
-        }
+            }
+            await ws.send(json.dumps(session_config))
+            recv_task = asyncio.create_task(
+                self._receive_events(session_id, ws_session, ws, channel)
+            )
+            return ws, recv_task
 
-        await ws.send(json.dumps(session_config))
+        # Create two websocket connections: channel 0 (customer), channel 1 (agent)
+        ws_customer, recv_task_customer = await create_ws_and_task(0)
+        ws_agent, recv_task_agent = await create_ws_and_task(1)
 
         ws_session.speech_session = {
-            "ws": ws,
+            "ws_customer": ws_customer,
+            "ws_agent": ws_agent,
             "media": media,
-            "recv_task": asyncio.create_task(
-                self._receive_events(session_id, ws_session)
-            ),
+            "recv_task_customer": recv_task_customer,
+            "recv_task_agent": recv_task_agent,
             "shutdown_event": asyncio.Event(),
         }
 
@@ -91,7 +97,7 @@ class AzureOpenAIGPT4oTranscriber(SpeechProvider):
         media: dict[str, Any],
         data: bytes,
     ) -> None:
-        """Send incoming audio directly to the OpenAI websocket (customer channel only)."""
+        """Send incoming audio directly to both OpenAI websockets (customer and agent channels)."""
         speech_session = ws_session.speech_session
         if not speech_session:
             self.logger.error(
@@ -99,17 +105,33 @@ class AzureOpenAIGPT4oTranscriber(SpeechProvider):
             )
             return
         try:
-            ws = speech_session["ws"]
-            # Only use customer channel if stereo
+            ws_customer = speech_session["ws_customer"]
+            ws_agent = speech_session["ws_agent"]
+            # If stereo, split and send both channels
             if len(media["channels"]) > 1:
-                customer, _ = split_stream(data)
-                chunk = customer
+                customer, agent = split_stream(data)
+                # Send customer (channel 0)
+                audio_b64_cust = base64.b64encode(customer).decode("utf-8")
+                await ws_customer.send(
+                    json.dumps(
+                        {"type": "input_audio_buffer.append", "audio": audio_b64_cust}
+                    )
+                )
+                # Send agent (channel 1)
+                audio_b64_agent = base64.b64encode(agent).decode("utf-8")
+                await ws_agent.send(
+                    json.dumps(
+                        {"type": "input_audio_buffer.append", "audio": audio_b64_agent}
+                    )
+                )
             else:
-                chunk = data
-            audio_b64 = base64.b64encode(chunk).decode("utf-8")
-            await ws.send(
-                json.dumps({"type": "input_audio_buffer.append", "audio": audio_b64})
-            )
+                # Mono: send to customer only
+                audio_b64 = base64.b64encode(data).decode("utf-8")
+                await ws_customer.send(
+                    json.dumps(
+                        {"type": "input_audio_buffer.append", "audio": audio_b64}
+                    )
+                )
         except Exception as ex:
             self.logger.error("Error sending audio frame to OpenAI websocket: %s", ex)
 
@@ -118,26 +140,32 @@ class AzureOpenAIGPT4oTranscriber(SpeechProvider):
         session_id: str,
         ws_session: WebSocketSessionStorage,
     ) -> None:
-        """Signal end of audio and close websocket."""
+        """Signal end of audio and close both websockets."""
         speech_session = ws_session.speech_session
         if not speech_session:
             return
         # Signal shutdown
         speech_session["shutdown_event"].set()
-        # Send commit to indicate end of audio
+        # Send commit to both websockets
         try:
-            ws = speech_session["ws"]
-            await ws.send(json.dumps({"type": "input_audio_buffer.commit"}))
+            await speech_session["ws_customer"].send(
+                json.dumps({"type": "input_audio_buffer.commit"})
+            )
+            await speech_session["ws_agent"].send(
+                json.dumps({"type": "input_audio_buffer.commit"})
+            )
         except Exception as ex:
             self.logger.error("Error sending commit to OpenAI websocket: %s", ex)
-        # Wait for receive task to finish
+        # Wait for both receive tasks to finish
         await asyncio.gather(
-            speech_session["recv_task"],
+            speech_session["recv_task_customer"],
+            speech_session["recv_task_agent"],
             return_exceptions=True,
         )
-        # Close websocket
+        # Close both websockets
         try:
-            await ws.close()
+            await speech_session["ws_customer"].close()
+            await speech_session["ws_agent"].close()
         except Exception as ex:
             self.logger.error("Error closing OpenAI websocket: %s", ex)
         ws_session.speech_session = None
@@ -147,18 +175,15 @@ class AzureOpenAIGPT4oTranscriber(SpeechProvider):
         return None
 
     async def _receive_events(
-        self, session_id: str, ws_session: WebSocketSessionStorage
+        self, session_id: str, ws_session: WebSocketSessionStorage, ws, channel: int
     ) -> None:
-        """Receive events from OpenAI and emit to conversation store/callback."""
-        speech_session = ws_session.speech_session
-        ws = speech_session["ws"]
+        """Receive events from OpenAI and emit to conversation store/callback. Channel is 0 (customer) or 1 (agent)."""
         try:
             async for message in ws:
                 try:
                     event = json.loads(message)
                     event_type = event.get("type")
 
-                    print(event_type)
                     if event_type == "input_audio_buffer.speech_stopped":
                         pass
                     elif (
@@ -170,6 +195,7 @@ class AzureOpenAIGPT4oTranscriber(SpeechProvider):
                             AzureGenesysEvent.PARTIAL_TRANSCRIPT,
                             session_id=session_id,
                             transcript=delta,
+                            channel=channel,
                         )
                     elif (
                         event_type
@@ -178,7 +204,7 @@ class AzureOpenAIGPT4oTranscriber(SpeechProvider):
                         transcript = event["transcript"]
 
                         item: dict[str, Any] = {
-                            "channel": 0,
+                            "channel": channel,
                             "text": transcript,
                             "start": None,
                             "end": None,
@@ -188,8 +214,9 @@ class AzureOpenAIGPT4oTranscriber(SpeechProvider):
                         )
 
                         self.logger.debug(
-                            "Transcript completed for session_id=%s: %s",
+                            "Transcript completed for session_id=%s channel=%d: %s",
                             session_id,
+                            channel,
                             transcript,
                         )
 
