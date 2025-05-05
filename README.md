@@ -7,9 +7,7 @@ This AudioHook server enables you to connect your own speech processing pipeline
 Real-time transcription enables advanced call center analytics, such as live summarization, agent coaching, and instant question answering, to improve customer experience and operational efficiency.
 
 > [!NOTE]
-> This repository provides an example implementation and is not intended for production use.
-> It is provided as-is, without support, and is meant to demonstrate Microsoft Azure services and tools.
-> If you plan to use this code in a production environment, review and implement appropriate security and operational best practices.
+> This repository accelerates integration between Genesys Cloud and Azure for demonstration and development purposes. It is not production-ready; carefully review, test, and adapt it to meet your organization's security, compliance, and operational requirements before production deployment.
 
 ## Components
 
@@ -52,6 +50,13 @@ Deploy this accelerator using the provided [infrastructure-as-code (Bicep)](./in
     For best compatibility, use `swedencentral` as your Azure region. Other regions may not be fully supported or tested.
 
 4. After deployment, the CLI will display a link to your web service. Open it in your browser, you should see `{"status": "healthy"}` to confirm the service is running.
+
+
+> [!IMPORTANT]
+> The current infrastructure-as-code templates deploy resources using public networking by default. Adapt this configuration to meet your organization's security requirements. Genesys Cloud requires a publicly accessible endpoint for AudioHook integration. In production environments, it is recommended to secure your deployment using Azure Front Door, Azure Web Application Firewall (WAF), or by restricting access to only the IP address ranges used by Genesys Cloud.
+
+To obtain the IP address ranges for your region that Genesys Cloud AudioHook protocol requests originate from, refer to the [Genesys Cloud IP address range documentation](https://help.mypurecloud.com/faqs/obtain-the-ip-address-range-for-my-region-for-audiohook/).
+
 
 ## Configure Genesys Cloud AudioHook
 
