@@ -36,6 +36,10 @@ class AzureOpenAIGPT4oTranscriber(SpeechProvider):
         self.supported_languages = [
             lang.strip() for lang in languages.split(",") if lang.strip()
         ]
+        self.model_deployment = os.getenv(
+            "AZURE_OPENAI_MODEL_DEPLOYMENT", "gpt-4o-transcribe"
+        )
+
         if not self.endpoint or not self.api_key:
             raise RuntimeError(
                 "AZURE_OPENAI_ENDPOINT and AZURE_OPENAI_KEY must be set in environment."
@@ -63,7 +67,7 @@ class AzureOpenAIGPT4oTranscriber(SpeechProvider):
                 "session": {
                     "input_audio_format": "g711_ulaw",
                     "input_audio_transcription": {
-                        "model": "gpt-4o-transcribe",
+                        "model": self.model_deployment,
                         "prompt": "Transcribe the incoming audio in real time.",
                         # "language": "",  # ISO-639-1 format
                     },
@@ -110,19 +114,27 @@ class AzureOpenAIGPT4oTranscriber(SpeechProvider):
             # If stereo, split and send both channels
             if len(media["channels"]) > 1:
                 customer, agent = split_stream(data)
-                # Send customer (channel 0)
+                # Send customer (channel 0) and agent (channel 1) concurrently
                 audio_b64_cust = base64.b64encode(customer).decode("utf-8")
-                await ws_customer.send(
-                    json.dumps(
-                        {"type": "input_audio_buffer.append", "audio": audio_b64_cust}
-                    )
-                )
-                # Send agent (channel 1)
                 audio_b64_agent = base64.b64encode(agent).decode("utf-8")
-                await ws_agent.send(
-                    json.dumps(
-                        {"type": "input_audio_buffer.append", "audio": audio_b64_agent}
-                    )
+
+                await asyncio.gather(
+                    ws_customer.send(
+                        json.dumps(
+                            {
+                                "type": "input_audio_buffer.append",
+                                "audio": audio_b64_cust,
+                            }
+                        )
+                    ),
+                    ws_agent.send(
+                        json.dumps(
+                            {
+                                "type": "input_audio_buffer.append",
+                                "audio": audio_b64_agent,
+                            }
+                        )
+                    ),
                 )
             else:
                 # Mono: send to customer only
@@ -146,23 +158,7 @@ class AzureOpenAIGPT4oTranscriber(SpeechProvider):
             return
         # Signal shutdown
         speech_session["shutdown_event"].set()
-        # Send commit to both websockets
-        try:
-            await speech_session["ws_customer"].send(
-                json.dumps({"type": "input_audio_buffer.commit"})
-            )
-            await speech_session["ws_agent"].send(
-                json.dumps({"type": "input_audio_buffer.commit"})
-            )
-        except Exception as ex:
-            self.logger.error("Error sending commit to OpenAI websocket: %s", ex)
-        # Wait for both receive tasks to finish
-        await asyncio.gather(
-            speech_session["recv_task_customer"],
-            speech_session["recv_task_agent"],
-            return_exceptions=True,
-        )
-        # Close both websockets
+
         try:
             await speech_session["ws_customer"].close()
             await speech_session["ws_agent"].close()
@@ -190,13 +186,8 @@ class AzureOpenAIGPT4oTranscriber(SpeechProvider):
                         event_type
                         == "conversation.item.input_audio_transcription.delta"
                     ):
-                        delta = event.get("delta", "")
-                        await self.send_event(
-                            AzureGenesysEvent.PARTIAL_TRANSCRIPT,
-                            session_id=session_id,
-                            transcript=delta,
-                            channel=channel,
-                        )
+                        self.logger.info(f"[{session_id}] Recognizing: {event}")
+
                     elif (
                         event_type
                         == "conversation.item.input_audio_transcription.completed"
@@ -210,6 +201,12 @@ class AzureOpenAIGPT4oTranscriber(SpeechProvider):
                         )
                         await self.conversations_store.append_transcript(
                             ws_session.conversation_id, item
+                        )
+
+                        await self.send_event(
+                            event=AzureGenesysEvent.PARTIAL_TRANSCRIPT,
+                            session_id=session_id,
+                            message=item.model_dump(),
                         )
 
                         self.logger.debug(
