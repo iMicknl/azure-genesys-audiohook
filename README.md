@@ -2,9 +2,12 @@
 
 This project provides a reference implementation of a WebSocket server on Azure that integrates with the [Genesys AudioHook protocol](https://developer.genesys.cloud/devapps/audiohook) for real-time transcription. It implements the [AudioHook Monitor](https://help.mypurecloud.com/articles/audiohook-monitor-overview/), where audio is streamed from the client to the server, and the server does not return results to the client.
 
-With this AudioHook server, you can connect your own speech processing pipeline—including custom speech-to-text or generative audio models—while maintaining data security and enabling seamless integration with other cloud-native applications.
+This AudioHook server enables you to connect your own speech processing pipeline—such as Azure AI (Custom) Speech, GPT-4o Transcribe, Whisper, or other services—while maintaining data security and seamless integration with cloud-native applications.
 
 Real-time transcription enables advanced call center analytics, such as live summarization, agent coaching, and instant question answering, to improve customer experience and operational efficiency.
+
+> [!NOTE]
+> This repository accelerates integration between Genesys Cloud and Azure for demonstration and development purposes. It is not production-ready; carefully review, test, and adapt it to meet your organization's security, compliance, and operational requirements before production deployment.
 
 ## Components
 
@@ -38,15 +41,20 @@ Deploy this accelerator using the provided [infrastructure-as-code (Bicep)](./in
 
 3. During deployment, you’ll be prompted for:
 
-    | Parameter           | Description                                                                 |
-    |---------------------|-----------------------------------------------------------------------------|
+    | Parameter           | Description                                                                  |
+    |---------------------|------------------------------------------------------------------------------|
     | Azure Subscription  | The Azure subscription for resource deployment.                              |
-    | Azure Location      | The Azure region for resources (e.g., swedencentral).                       |
+    | Azure Location      | The Azure region for resources                                               |
     | Environment Name    | A unique environment name (used as a prefix for resource names).             |
 
     For best compatibility, use `swedencentral` as your Azure region. Other regions may not be fully supported or tested.
 
 4. After deployment, the CLI will display a link to your web service. Open it in your browser, you should see `{"status": "healthy"}` to confirm the service is running.
+
+
+> [!IMPORTANT]
+> The default infrastructure templates use public networking. For production, secure your deployment with Azure Front Door, Azure Web Application Firewall (WAF), or restrict access to [Genesys Cloud IP ranges](https://help.mypurecloud.com/faqs/obtain-the-ip-address-range-for-my-region-for-audiohook/), as Genesys Cloud requires a publicly accessible endpoint.
+
 
 ## Configure Genesys Cloud AudioHook
 
