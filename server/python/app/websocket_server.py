@@ -9,8 +9,6 @@ from typing import Any
 from azure.storage.blob.aio import BlobServiceClient
 from quart import Quart, request, websocket
 
-from server.python.app.speech.azure_ai_speech_provider import AzureAISpeechProvider
-
 from .enums import (
     AzureGenesysEvent,
     ClientMessageType,
@@ -26,6 +24,7 @@ from .models import (
     HealthCheckResponse,
     WebSocketSessionStorage,
 )
+from .speech.azure_ai_speech_provider import AzureAISpeechProvider
 from .speech.azure_openai_gpt4o_transcriber import (
     AzureOpenAIGPT4oTranscriber,
 )
