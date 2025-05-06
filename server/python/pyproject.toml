@@ -18,6 +18,8 @@ dependencies = [
     "azure-eventhub>=5.13.0",
     "azure-cosmos>=4.9.0",
     "pydantic>=2.11.3",
+    "websockets>=15.0.1",
+    "openai>=1.77.0",
 ]
 
 [tool.uv]

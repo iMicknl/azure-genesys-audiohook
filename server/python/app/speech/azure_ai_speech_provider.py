@@ -7,7 +7,7 @@ from typing import Any, Awaitable, Callable, cast
 import azure.cognitiveservices.speech as speechsdk
 
 from ..enums import AzureGenesysEvent
-from ..models import AzureAISpeechSession, WebSocketSessionStorage
+from ..models import AzureAISpeechSession, TranscriptItem, WebSocketSessionStorage
 from ..storage.base_conversation_store import ConversationStore
 from ..utils.identity import get_speech_token
 from .speech_provider import SpeechProvider
@@ -15,6 +15,8 @@ from .speech_provider import SpeechProvider
 
 class AzureAISpeechProvider(SpeechProvider):
     """Azure AI Speech implementation of SpeechProvider."""
+
+    supported_languages: list[str] = []
 
     def __init__(
         self,
@@ -31,7 +33,7 @@ class AzureAISpeechProvider(SpeechProvider):
         self.speech_key: str | None = os.getenv("AZURE_SPEECH_KEY")
         self.speech_resource_id: str | None = os.getenv("AZURE_SPEECH_RESOURCE_ID")
         languages = os.getenv("AZURE_SPEECH_LANGUAGES", "en-US")
-        self.languages: list[str] = languages.split(",") if languages else ["en-US"]
+        self.supported_languages = languages.split(",") if languages else ["en-US"]
 
     async def initialize_session(
         self,
@@ -138,12 +140,12 @@ class AzureAISpeechProvider(SpeechProvider):
                 endpoint=endpoint,
             )
 
-        if len(self.languages) > 1:
-            speech_config.speech_recognition_language = self.languages[0]
+        if len(self.supported_languages) > 1:
+            speech_config.speech_recognition_language = self.supported_languages[0]
             auto_detect = None
         else:
             auto_detect = speechsdk.languageconfig.AutoDetectSourceLanguageConfig(
-                languages=self.languages
+                languages=self.supported_languages
             )
             speech_config.set_property(
                 speechsdk.PropertyId.SpeechServiceConnection_LanguageIdMode,
@@ -230,13 +232,16 @@ class AzureAISpeechProvider(SpeechProvider):
         start = f"PT{offset / 10_000_000:.2f}S"
         end = f"PT{(offset + duration) / 10_000_000:.2f}S"
 
+        channel = result.get("Channel") if is_multichannel else None
+
+        item = TranscriptItem(
+            channel=channel,
+            text=text,
+            start=start,
+            end=end,
+        )
+
         async def _update() -> None:
-            item: dict[str, Any] = {
-                "channel": result.get("Channel") if is_multichannel else None,
-                "text": text,
-                "start": start,
-                "end": end,
-            }
             await self.conversations_store.append_transcript(
                 ws_session.conversation_id, item
             )
@@ -246,13 +251,7 @@ class AzureAISpeechProvider(SpeechProvider):
             self.send_event(
                 event=AzureGenesysEvent.PARTIAL_TRANSCRIPT,
                 session_id=session_id,
-                message={
-                    "text": text,
-                    "channel": result.get("Channel") if is_multichannel else None,
-                    "start": start,
-                    "end": end,
-                    "data": result,
-                },
+                message=item.model_dump(),
             ),
             loop,
         )

@@ -1,4 +1,4 @@
-from ..models import Conversation
+from ..models import Conversation, TranscriptItem
 from .base_conversation_store import ConversationStore
 
 
@@ -47,7 +47,7 @@ class InMemoryConversationStore(ConversationStore):
             conversation.rtt.append(rtt)
             await self.set(conversation)
 
-    async def append_transcript(self, conversation_id: str, item: dict):
+    async def append_transcript(self, conversation_id: str, item: TranscriptItem):
         conversation = await self.get(conversation_id)
         if conversation:
             conversation.transcript.append(item)
