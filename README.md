@@ -73,6 +73,19 @@ Once your web service is running, configure the AudioHook Monitor in Genesys Clo
 
 4. Activate your AudioHook.
 
+### Test your deployment
+
+1. Place a call to your Genesys queue where the AudioHook Monitor is enabled.
+
+2. Open your deployed web service in a browser. The following endpoints are available to check conversation status:
+
+    ```
+    /api/conversations?key={API_KEY}&active=false|true
+    /api/conversation/{CONVERSATION_ID}?key={API_KEY}
+    ```
+
+3. Confirm that the call audio is being transcribed as expected.
+
 ## Clean up resources
 
 When you no longer need the resources created in this article, run the following command to power down the app:
