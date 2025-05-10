@@ -39,7 +39,7 @@ Deploy this accelerator using the provided [infrastructure-as-code (Bicep)](./in
     azd env new
     ```
 
-1. At this stage, you can customize your deployment by setting environment variables. Currently, you can specify the speech provider for transcription with the following command:
+1. (optional) At this stage, you can customize your deployment by setting environment variables. You can configure the following settings:
 
     ```bash
         azd env set SPEECH_PROVIDER <option>
@@ -48,8 +48,8 @@ Deploy this accelerator using the provided [infrastructure-as-code (Bicep)](./in
 
     | Parameter           | Default              | Options / Description                                                                                                                                                                                                                 |
     |---------------------|----------------------|--------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|
-    | `SPEECH_PROVIDER`   | `azure-ai-speech`    | Choose the speech-to-text provider:`azure-ai-speech` or `azure-openai-gpt4o-transcribe`                                                                                                                                    |
-    | `AZURE_SPEECH_LANG` | `en-US`              | Specify one or more supported locales (comma-separated, e.g., `en-US,nl-NL`).<br>See the [full list of supported languages](https://learn.microsoft.com/en-us/azure/ai-services/speech-service/language-support?tabs=stt).<br>When multiple locales are set, automatic language identification is enabled. |
+    | `SPEECH_PROVIDER`   | `azure-ai-speech`    | Choose the speech-to-text provider:`azure-ai-speech` or `azure-openai-gpt4o-transcribe`.   |
+    | `AZURE_SPEECH_LANG` | `en-US`              | Specify one or more supported locales (comma-separated, e.g. `en-US,nl-NL`). See the [full list of supported languages](https://learn.microsoft.com/en-us/azure/ai-services/speech-service/language-support?tabs=stt). When multiple locales are set, automatic language identification is enabled. |
 
 1. Deploy resources with:
 
