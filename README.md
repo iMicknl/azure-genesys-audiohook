@@ -42,13 +42,14 @@ Deploy this accelerator using the provided [infrastructure-as-code (Bicep)](./in
 1. At this stage, you can customize your deployment by setting environment variables. Currently, you can specify the speech provider for transcription with the following command:
 
     ```bash
-    azd env set SPEECH_PROVIDER <option>
+        azd env set SPEECH_PROVIDER <option>
+        azd env set AZURE_SPEECH_LANG <locale(s)>
     ```
 
-    | Parameter       | Options                                                      |
-    |-----------------|--------------------------------------------------------------|
-    | SPEECH_PROVIDER | `azure-ai-speech` (default), `azure-openai-gpt4o-transcribe` |
-
+    | Parameter           | Default              | Options / Description                                                                                                                                                                                                                 |
+    |---------------------|----------------------|--------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|
+    | `SPEECH_PROVIDER`   | `azure-ai-speech`    | Choose the speech-to-text provider:`azure-ai-speech` or `azure-openai-gpt4o-transcribe`                                                                                                                                    |
+    | `AZURE_SPEECH_LANG` | `en-US`              | Specify one or more supported locales (comma-separated, e.g., `en-US,nl-NL`).<br>See the [full list of supported languages](https://learn.microsoft.com/en-us/azure/ai-services/speech-service/language-support?tabs=stt).<br>When multiple locales are set, automatic language identification is enabled. |
 
 1. Deploy resources with:
 
