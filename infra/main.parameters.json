@@ -10,6 +10,12 @@
         },
         "containerImage": {
             "value": "ghcr.io/imicknl/azure-genesys-audiohook-server:latest"
+        },
+        "speechProvider": {
+            "value": "${SPEECH_PROVIDER}"
+        },
+        "azureSpeechLanguages": {
+            "value": "${AZURE_SPEECH_LANGUAGES}"
         }
     }
 }

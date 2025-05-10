@@ -16,6 +16,7 @@ param speechKeySecretUri string
 param azureSpeechLanguages string
 param eventHubNamespaceName string
 param eventHubName string
+param speechProvider string
 
 // Helper to sanitize environmentName for valid container app name
 var sanitizedEnvName = toLower(replace(replace(replace(replace(environmentName, ' ', '-'), '--', '-'), '[^a-zA-Z0-9-]', ''), '_', '-'))
@@ -150,6 +151,10 @@ resource containerApp 'Microsoft.App/containerApps@2024-10-02-preview' = {
             {
               name: 'AZURE_EVENT_HUB_NAME'
               value: eventHubName
+            }
+            {
+              name: 'SPEECH_PROVIDER'
+              value: speechProvider
             }
           ]
           resources: {

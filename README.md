@@ -33,13 +33,30 @@ Deploy this accelerator using the provided [infrastructure-as-code (Bicep)](./in
 
     This opens a browser window for secure sign-in.
 
-2. Deploy resources with:
+1. Create a new environment with:
+
+    ```bash
+    azd env new
+    ```
+
+1. At this stage, you can customize your deployment by setting environment variables. Currently, you can specify the speech provider for transcription with the following command:
+
+    ```bash
+    azd env set SPEECH_PROVIDER <option>
+    ```
+
+    | Parameter       | Options                                                      |
+    |-----------------|--------------------------------------------------------------|
+    | SPEECH_PROVIDER | `azure-ai-speech` (default), `azure-openai-gpt4o-transcribe` |
+
+
+1. Deploy resources with:
 
     ```bash
     azd up
     ```
 
-3. During deployment, you’ll be prompted for:
+1. During deployment, you’ll be prompted for:
 
     | Parameter           | Description                                                                  |
     |---------------------|------------------------------------------------------------------------------|
@@ -49,7 +66,7 @@ Deploy this accelerator using the provided [infrastructure-as-code (Bicep)](./in
 
     For best compatibility, use `swedencentral` as your Azure region. Other regions may not be fully supported or tested.
 
-4. After deployment, the CLI will display a link to your web service. Open it in your browser, you should see `{"status": "healthy"}` to confirm the service is running.
+1. After deployment, the CLI will display a link to your web service. Open it in your browser, you should see `{"status": "healthy"}` to confirm the service is running.
 
 
 > [!IMPORTANT]
