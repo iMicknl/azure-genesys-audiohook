@@ -25,6 +25,9 @@ from .models import (
     WebSocketSessionStorage,
 )
 from .speech.azure_ai_speech_provider import AzureAISpeechProvider
+from .speech.azure_openai_gpt4o_transcriber import (
+    AzureOpenAIGPT4oTranscriber,
+)
 from .speech.speech_provider import SpeechProvider
 from .storage.base_conversation_store import ConversationStore
 from .storage.conversation_store import get_conversation_store
@@ -99,16 +102,31 @@ class WebsocketServer:
         ):
             self.event_publisher = EventPublisher()
 
-        if os.getenv("AZURE_SPEECH_REGION") and (
-            os.getenv("AZURE_SPEECH_KEY") or os.getenv("AZURE_SPEECH_RESOURCE_ID")
-        ):
-            self.speech_provider = AzureAISpeechProvider(
-                self.conversations_store, self.send_event, self.logger
-            )
-        else:
-            raise RuntimeError(
-                "Azure Speech configuration is required. Please set AZURE_SPEECH_REGION and either AZURE_SPEECH_KEY or AZURE_SPEECH_RESOURCE_ID."
-            )
+        if selected_speech_provider := os.getenv("SPEECH_PROVIDER", "azure-ai-speech"):
+            if selected_speech_provider == "azure-ai-speech":
+                if os.getenv("AZURE_SPEECH_REGION") and (
+                    os.getenv("AZURE_SPEECH_KEY")
+                    or os.getenv("AZURE_SPEECH_RESOURCE_ID")
+                ):
+                    self.speech_provider = AzureAISpeechProvider(
+                        self.conversations_store, self.send_event, self.logger
+                    )
+                else:
+                    raise RuntimeError(
+                        "Azure Speech configuration is required. Please set AZURE_SPEECH_REGION and either AZURE_SPEECH_KEY or AZURE_SPEECH_RESOURCE_ID."
+                    )
+
+            elif selected_speech_provider == "azure-openai-gpt4o-transcribe":
+                if os.getenv("AZURE_OPENAI_ENDPOINT") and (
+                    os.getenv("AZURE_OPENAI_MODEL_DEPLOYMENT")
+                ):
+                    self.speech_provider = AzureOpenAIGPT4oTranscriber(
+                        self.conversations_store, self.send_event, self.logger
+                    )
+                else:
+                    raise RuntimeError(
+                        "Azure OpenAI Speech configuration is required. Please set AZURE_OPENAI_ENDPOINT and AZURE_OPENAI_MODEL_DEPLOYMENT."
+                    )
 
     async def close_connections(self):
         """Close connections after serving"""
@@ -519,10 +537,14 @@ class WebsocketServer:
 
         if parameters["reason"] == CloseReason.END:
             if conversation and conversation.media:
+                transcript = [
+                    item.model_dump() if hasattr(item, "model_dump") else dict(item)
+                    for item in (conversation.transcript or [])
+                ]
                 await self.send_event(
                     event=AzureGenesysEvent.TRANSCRIPT_AVAILABLE,
                     session_id=session_id,
-                    message={"transcript": conversation.transcript},
+                    message={"transcript": transcript},
                 )
 
             await self.send_message(

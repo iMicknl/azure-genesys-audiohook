@@ -12,6 +12,9 @@ param containerImage string
 @description('Comma-separated list of Azure Speech languages, e.g. "en-US,nl-NL"')
 param azureSpeechLanguages string = 'en-US'
 
+@description('Speech provider to use')
+param speechProvider string = 'azure-ai-speech'
+
 var uniqueSuffix = substring(uniqueString(subscription().id, environmentName), 0, 5)
 var tags = {
   environment: environmentName
@@ -98,6 +101,7 @@ module containerapp 'modules/containerapp.bicep' = {
     azureSpeechLanguages: azureSpeechLanguages
     eventHubNamespaceName: eventhub.outputs.eventHubNamespaceName
     eventHubName: eventhub.outputs.eventHubName
+    speechProvider: speechProvider // Pass the parameter
   }
 }
 

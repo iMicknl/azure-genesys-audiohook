@@ -33,13 +33,31 @@ Deploy this accelerator using the provided [infrastructure-as-code (Bicep)](./in
 
     This opens a browser window for secure sign-in.
 
-2. Deploy resources with:
+1. Create a new environment with:
+
+    ```bash
+    azd env new
+    ```
+
+1. (optional) At this stage, you can customize your deployment by setting environment variables. You can configure the following settings:
+
+    ```bash
+        azd env set SPEECH_PROVIDER <option>
+        azd env set AZURE_SPEECH_LANG <locale(s)>
+    ```
+
+    | Parameter           | Default              | Options / Description                                                                                                                                                                                                                 |
+    |---------------------|----------------------|--------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|
+    | `SPEECH_PROVIDER`   | `azure-ai-speech`    | Choose the speech-to-text provider:`azure-ai-speech` or `azure-openai-gpt4o-transcribe`.   |
+    | `AZURE_SPEECH_LANG` | `en-US`              | Specify one or more supported locales (comma-separated, e.g. `en-US,nl-NL`). See the [full list of supported languages](https://learn.microsoft.com/en-us/azure/ai-services/speech-service/language-support?tabs=stt). When multiple locales are set, automatic language identification is enabled. |
+
+1. Deploy resources with:
 
     ```bash
     azd up
     ```
 
-3. During deployment, you’ll be prompted for:
+1. During deployment, you’ll be prompted for:
 
     | Parameter           | Description                                                                  |
     |---------------------|------------------------------------------------------------------------------|
@@ -49,7 +67,7 @@ Deploy this accelerator using the provided [infrastructure-as-code (Bicep)](./in
 
     For best compatibility, use `swedencentral` as your Azure region. Other regions may not be fully supported or tested.
 
-4. After deployment, the CLI will display a link to your web service. Open it in your browser, you should see `{"status": "healthy"}` to confirm the service is running.
+1. After deployment, the CLI will display a link to your web service. Open it in your browser, you should see `{"status": "healthy"}` to confirm the service is running.
 
 
 > [!IMPORTANT]

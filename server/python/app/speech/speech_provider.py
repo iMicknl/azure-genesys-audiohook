@@ -5,6 +5,8 @@ from typing import Any
 class SpeechProvider(ABC):
     """Interface for speech providers."""
 
+    supported_languages: list[str] = []
+
     @abstractmethod
     async def initialize_session(
         self, session_id: str, ws_session: Any, media: dict[str, Any]
