@@ -11,6 +11,7 @@ from ..enums import AzureGenesysEvent
 from ..models import TranscriptItem, WebSocketSessionStorage
 from ..storage.base_conversation_store import ConversationStore
 from ..utils.audio import split_stream
+from ..utils.identity import get_access_token
 from .speech_provider import SpeechProvider
 
 logger = logging.getLogger(__name__)
@@ -19,7 +20,65 @@ logger = logging.getLogger(__name__)
 class AzureOpenAIGPT4oTranscriber(SpeechProvider):
     """Azure OpenAI GPT-4o streaming transcription provider."""
 
-    supported_languages: list[str] = []
+    supported_languages: list[str] = [
+        "af",
+        "ar",
+        "az",
+        "be",
+        "bg",
+        "bs",
+        "ca",
+        "cs",
+        "cy",
+        "da",
+        "de",
+        "el",
+        "en",
+        "es",
+        "et",
+        "fa",
+        "fi",
+        "fr",
+        "gl",
+        "he",
+        "hi",
+        "hr",
+        "hu",
+        "hy",
+        "id",
+        "is",
+        "it",
+        "ja",
+        "kk",
+        "kn",
+        "ko",
+        "lt",
+        "lv",
+        "mi",
+        "mk",
+        "mr",
+        "ms",
+        "ne",
+        "nl",
+        "no",
+        "pl",
+        "pt",
+        "ro",
+        "ru",
+        "sk",
+        "sl",
+        "sr",
+        "sv",
+        "sw",
+        "ta",
+        "th",
+        "tl",
+        "tr",
+        "uk",
+        "ur",
+        "vi",
+        "zh",
+    ]
 
     def __init__(
         self,
@@ -32,18 +91,13 @@ class AzureOpenAIGPT4oTranscriber(SpeechProvider):
         self.logger = logger_
         self.endpoint = os.getenv("AZURE_OPENAI_ENDPOINT")
         self.api_key = os.getenv("AZURE_OPENAI_KEY")
-        languages = os.getenv("AZURE_OPENAI_LANGUAGES", "en")
-        self.supported_languages = [
-            lang.strip() for lang in languages.split(",") if lang.strip()
-        ]
+
         self.model_deployment = os.getenv(
             "AZURE_OPENAI_MODEL_DEPLOYMENT", "gpt-4o-transcribe"
         )
 
-        if not self.endpoint or not self.api_key:
-            raise RuntimeError(
-                "AZURE_OPENAI_ENDPOINT and AZURE_OPENAI_KEY must be set in environment."
-            )
+        if not self.endpoint:
+            raise RuntimeError("AZURE_OPENAI_ENDPOINT must be set in environment.")
 
     async def initialize_session(
         self,
@@ -56,9 +110,14 @@ class AzureOpenAIGPT4oTranscriber(SpeechProvider):
             self.endpoint.replace("https://", "wss://")
             + "/openai/realtime?api-version=2025-04-01-preview&intent=transcription"
         )
-        headers = {
-            "api-key": self.api_key,
-        }
+
+        if self.api_key:
+            headers = {
+                "api-key": self.api_key,
+            }
+        else:
+            headers = {"Authorization": f"Bearer {get_access_token().token}"}
+            print(f"WebSocket headers: {headers}")
 
         async def create_ws_and_task(channel: int):
             ws = await websockets.connect(ws_url, additional_headers=headers)
@@ -69,13 +128,15 @@ class AzureOpenAIGPT4oTranscriber(SpeechProvider):
                     "input_audio_transcription": {
                         "model": self.model_deployment,
                         "prompt": "Transcribe the incoming audio in real time.",
-                        # "language": "",  # ISO-639-1 format
+                        # "language": "",  # (optional) set language in ISO-639-1 format
                     },
                     "input_audio_noise_reduction": {"type": "near_field"},
                     "turn_detection": {"type": "server_vad"},
                 },
             }
+
             await ws.send(json.dumps(session_config))
+
             recv_task = asyncio.create_task(
                 self._receive_events(session_id, ws_session, ws, channel)
             )
@@ -111,9 +172,11 @@ class AzureOpenAIGPT4oTranscriber(SpeechProvider):
         try:
             ws_customer = speech_session["ws_customer"]
             ws_agent = speech_session["ws_agent"]
+
             # If stereo, split and send both channels
             if len(media["channels"]) > 1:
                 customer, agent = split_stream(data)
+
                 # Send customer (channel 0) and agent (channel 1) concurrently
                 audio_b64_cust = base64.b64encode(customer).decode("utf-8")
                 audio_b64_agent = base64.b64encode(agent).decode("utf-8")
@@ -156,6 +219,7 @@ class AzureOpenAIGPT4oTranscriber(SpeechProvider):
         speech_session = ws_session.speech_session
         if not speech_session:
             return
+
         # Signal shutdown
         speech_session["shutdown_event"].set()
 

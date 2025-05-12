@@ -116,7 +116,7 @@ class WebsocketServer:
                         "Azure Speech configuration is required. Please set AZURE_SPEECH_REGION and either AZURE_SPEECH_KEY or AZURE_SPEECH_RESOURCE_ID."
                     )
 
-            elif selected_speech_provider == "azure-openai-gpt4o":
+            elif selected_speech_provider == "azure-openai-gpt4o-transcribe":
                 if os.getenv("AZURE_OPENAI_ENDPOINT") and (
                     os.getenv("AZURE_OPENAI_MODEL_DEPLOYMENT")
                 ):
