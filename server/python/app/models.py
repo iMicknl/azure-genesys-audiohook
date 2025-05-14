@@ -24,7 +24,7 @@ class ServerMessageBase(MessageBase):
 
 
 class TranscriptItem(BaseModel):
-    channel: int
+    channel: int | None = None
     text: str
     start: str | None = None  # ISO 8601 duration string, e.g., "PT1.23S"
     end: str | None = None  # ISO 8601 duration string, e.g., "PT1.23S"
