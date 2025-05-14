@@ -75,8 +75,8 @@ Deploy this accelerator using the provided [infrastructure-as-code (Bicep)](./in
 
 
 ## Configure Genesys Cloud AudioHook
-
-Once your web service is running, configure the AudioHook Monitor in Genesys Cloud to stream audio to your Azure deployment.
+23
+Once your web service is running, set up the AudioHook Monitor in Genesys Cloud to stream audio to your Azure deployment. If you do not have access to a Genesys Cloud instance, you can skip this step and use the Genesys mock client for testing later.
 
 1. Follow the [Genesys configuration guide](https://help.mypurecloud.com/articles/configure-and-activate-audiohook-monitor-in-genesys-cloud/).
 
@@ -93,7 +93,7 @@ Once your web service is running, configure the AudioHook Monitor in Genesys Clo
 
 ### Test your deployment
 
-1. Place a call to your Genesys queue where the AudioHook Monitor is enabled.
+1. Place a call to the queue where the AudioHook Monitor is enabled or leverage the [mock client](https://github.com/purecloudlabs/audiohook-reference-implementation/tree/main/client) provided by Genesys.
 
 2. Open your deployed web service in a browser. The following endpoints are available to check conversation status:
 
