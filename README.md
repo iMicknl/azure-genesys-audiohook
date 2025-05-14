@@ -21,12 +21,12 @@ The AudioHook processing is separated from AI services, allowing flexible deploy
 
 This accelerator offers a straightforward architecture to help you quickly integrate Genesys AudioHook with Azure for real-time transcription. The initial setup is designed for simplicity and ease of deployment, making it well-suited for demos and development.
 
-![Basic real-time architecture](./docs/images/real-time-architecture.png)
+![Basic real-time architecture](./docs/images/real-time-architecture-simplified.png)
 _Basic architecture for real-time transcription_
 
 For production use, consider extending the architecture to improve scalability, security, and reliability. Enhancements may include adding Azure Web Application Firewall (WAF), using event-driven processing with Azure Event Hubs or Service Bus, deploying components as containerized workloads and enabling monitoring with Azure Monitor.
 
-![Example production architecture](./docs/images/real-time-architecture.png)
+![Example production architecture](./docs/images/real-time-architecture-production.png)
 _Production-ready architecture with enhanced security and scalability_
 
 This modular design lets you tailor the solution to your needs, supporting advanced scenarios and integration with enterprise systems.
