@@ -19,7 +19,17 @@ The AudioHook processing is separated from AI services, allowing flexible deploy
 
 ### Architecture
 
-![Real-time architecture](./docs/images/real-time-architecture.png)
+This accelerator offers a straightforward architecture to help you quickly integrate Genesys AudioHook with Azure for real-time transcription. The initial setup is designed for simplicity and ease of deployment, making it well-suited for demos and development.
+
+![Basic real-time architecture](./docs/images/real-time-architecture.png)
+_Basic architecture for real-time transcription_
+
+For production use, consider extending the architecture to improve scalability, security, and reliability. Enhancements may include adding Azure Web Application Firewall (WAF), using event-driven processing with Azure Event Hubs or Service Bus, deploying components as containerized workloads and enabling monitoring with Azure Monitor.
+
+![Example production architecture](./docs/images/real-time-architecture.png)
+_Production-ready architecture with enhanced security and scalability_
+
+This modular design lets you tailor the solution to your needs, supporting advanced scenarios and integration with enterprise systems.
 
 ## Deployment
 
@@ -75,7 +85,6 @@ Deploy this accelerator using the provided [infrastructure-as-code (Bicep)](./in
 
 
 ## Configure Genesys Cloud AudioHook
-23
 Once your web service is running, set up the AudioHook Monitor in Genesys Cloud to stream audio to your Azure deployment. If you do not have access to a Genesys Cloud instance, you can skip this step and use the Genesys mock client for testing later.
 
 1. Follow the [Genesys configuration guide](https://help.mypurecloud.com/articles/configure-and-activate-audiohook-monitor-in-genesys-cloud/).
