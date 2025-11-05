@@ -1011,6 +1011,8 @@ class WebsocketServer:
                 f"[{session_id}] Generating realtime insights from transcript..."
             )
 
+            languages = os.getenv("AZURE_SPEECH_LANGUAGES", "en-US").split(",")
+
             # Get the transcript text from all channels
             # Get the transcript text from all channels, labeling each speaker
             transcript_lines = []
@@ -1027,7 +1029,7 @@ class WebsocketServer:
             transcript_text = "\n".join(transcript_lines)
 
             # Simple implementation using OpenAI
-            SYSTEM_MESSAGE = """
+            SYSTEM_MESSAGE = f"""
             ## Defining the profile, capabilities and limitations
             - Act as an agent to help callcenter agents with real-time insights.
             - During a call, you will be provided with a transcript of the conversation between the agent and the customer.
@@ -1053,6 +1055,7 @@ class WebsocketServer:
             - Output queries in 'suggested_queries' key, as a list of strings or empty list.
             - Output action should be in 'suggested_actions' key, as a list of strings or empty list.
             - Output sentiment should be in 'sentiment' key, as a string.
+            - The textual output should be in {languages[0]}.
             """.strip()
 
             response = await self.openai_client.chat.completions.create(
@@ -1083,6 +1086,7 @@ class WebsocketServer:
         """Generate a summary from transcript using OpenAI."""
 
         self.logger.info(f"[{session_id}] Generating summary from transcript...")
+        languages = os.getenv("AZURE_SPEECH_LANGUAGES", "en-US").split(",")
 
         # Get the transcript text from all channels
         # Get the transcript text from all channels, labeling each speaker
@@ -1100,7 +1104,7 @@ class WebsocketServer:
         transcript_text = "\n".join(transcript_lines)
 
         # Simple implementation using OpenAI
-        SYSTEM_MESSAGE = """
+        SYSTEM_MESSAGE = f"""
             ## Defining the profile, capabilities and limitations
             - Act as an agent to help callcenter agents summarize their conversation with a customer
             - The summary should cover all the key points and main ideas presented in the original text, while also condensing the information into a concise and easy-to-understand format.
@@ -1114,6 +1118,8 @@ class WebsocketServer:
             - Your response should contain the following details:
                 - **Summary**: What is the main question of the customer?
                 - **Solution**: What is the answer(s) or solution(s) for the customer, provided by the agent?
+
+            - The textual output should be in {languages[0]}.
             """
 
         response = await self.openai_client.chat.completions.create(
